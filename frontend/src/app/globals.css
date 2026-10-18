@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #fafafa;
+  --color-surface: #ffffff;
+  --color-sunken: #f3f3f3;
+  --color-line: #eaeaea;
+  --color-line-strong: #dcdcdc;
+  --color-ink: #0a0a0a;
+  --color-ink-2: #3a3a3a;
+  --color-muted: #5c5c5c;
+  --color-faint: #a1a1aa;
+  --color-accent: #bba8ee;
+  --color-accent-strong: #a891e6;
+  --color-accent-soft: #f1eefb;
+  --color-success: #166534;
+  --color-success-soft: #dcfce7;
+  --color-warning: #7a4100;
+  --color-warning-soft: #fff4e5;
+  --color-danger: #b42318;
+  --color-record: #ff6b5a;
+  --color-danger-soft: #fde2e1;
+  --color-player: #1f2430;
+  --color-flag: #f5c26b;
+  --color-flag-soft: #fff8ec;
+
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+
+  --font-sans: var(--font-geist), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-bricolage), var(--font-geist), sans-serif;
+}
+
+/* Base rules live in a layer so Tailwind utilities (text-white on a dark link button) can override them. */
+@layer base {
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.025em;
+  }
+
+  a {
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

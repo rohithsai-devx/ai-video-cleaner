@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "commit": null,
+    "dirty": null,
+    "statusHash": null,
+    "verifiedAt": null
+  },
+  "active": {
+    "task": null,
+    "spec": null,
+    "decisions": [],
+    "blockers": [],
+    "nextAction": "Set the task and choose the first workflow stage.",
+    "paths": [],
+    "nodeIds": [],
+    "edgeIds": [],
+    "factIds": [],
+    "riskIds": []
+  },
+  "nodes": [],
+  "edges": [],
+  "queries": [],
+  "facts": [],
+  "risks": [],
+  "archive": ".coding-powers/context-archive.jsonl"
+}

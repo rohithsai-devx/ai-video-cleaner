@@ -1,0 +1,198 @@
+{
+  "run_id": "7c1f0a52-3d4e-4b8a-9f61-2e5d8a6b1c20",
+  "version": 1,
+  "source": "agent",
+  "script": {
+    "style": "clean",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "text": "Hi, today I'll show you how to export the quarterly report.",
+        "seg_ids": ["seg_01"],
+        "source_span": [0.0, 12.4],
+        "target_min": 4.0,
+        "target_max": 14.0,
+        "est_dur": 4.4
+      },
+      {
+        "block_id": "b2",
+        "text": "Open the Reports tab and choose Export from the toolbar. Pick the PDF format, which keeps the table layout, then confirm the date range.",
+        "seg_ids": ["seg_03"],
+        "source_span": [18.0, 41.5],
+        "target_min": 10.0,
+        "target_max": 30.0,
+        "est_dur": 10.4
+      },
+      {
+        "block_id": "b3",
+        "text": "Click Save and the file lands in Downloads.",
+        "seg_ids": ["seg_05"],
+        "source_span": [46.2, 52.0],
+        "target_min": 4.0,
+        "target_max": 10.0,
+        "est_dur": 3.8
+      },
+      {
+        "block_id": "b4",
+        "text": "That is the whole export, and the file is ready to share with the team.",
+        "seg_ids": ["seg_06"],
+        "source_span": [52.0, 60.0],
+        "target_min": 4.0,
+        "target_max": 10.0,
+        "est_dur": 4.6
+      }
+    ]
+  },
+  "edit_plan": {
+    "entries": [
+      {
+        "seg_id": "seg_01",
+        "src": [0.0, 12.4],
+        "action": "keep",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": "b1",
+        "reasoning": "Opening narration is kept; the filler word is dropped from the script, not from the audio."
+      },
+      {
+        "seg_id": "seg_02",
+        "src": [12.4, 18.0],
+        "action": "cut",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": null,
+        "reasoning": "Export spinner with no speech for 5.6 s. Nothing is lost by cutting it."
+      },
+      {
+        "seg_id": "seg_03",
+        "src": [18.0, 41.5],
+        "action": "keep",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": "b2",
+        "reasoning": "Menu walkthrough is the core of the video. Kept at normal speed."
+      },
+      {
+        "seg_id": "seg_04",
+        "src": [41.5, 46.2],
+        "action": "cut",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": null,
+        "reasoning": "First attempt at the export step, restarted by the speaker. The take that follows is clean."
+      },
+      {
+        "seg_id": "seg_05",
+        "src": [46.2, 52.0],
+        "action": "keep",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": "b3",
+        "reasoning": "Second take of the save step. Kept as the one the viewer sees."
+      },
+      {
+        "seg_id": "seg_06",
+        "src": [52.0, 60.0],
+        "action": "keep",
+        "speed": 1.0,
+        "freeze_s": 0.0,
+        "block_id": "b4",
+        "reasoning": "Closing line with the saved file on screen."
+      }
+    ]
+  },
+  "seg_contexts": [
+    {
+      "seg_id": "seg_01",
+      "label": "intro narration",
+      "reasoning": "Speaker introduces the task while the Reports page is open.",
+      "cuttable": false,
+      "min_dur": 4.0,
+      "max_dur": 14.0,
+      "max_speed": 1.25,
+      "must_keep": [[0.0, 3.0]],
+      "screen_text": ["Reports"],
+      "by": "vlm"
+    },
+    {
+      "seg_id": "seg_02",
+      "label": "waiting for report export",
+      "reasoning": "Screen is static while the export spins. No speech.",
+      "cuttable": true,
+      "min_dur": 0.3,
+      "max_dur": 1.0,
+      "max_speed": 2.0,
+      "must_keep": [],
+      "screen_text": ["Exporting..."],
+      "by": "code"
+    },
+    {
+      "seg_id": "seg_03",
+      "label": "menu walkthrough",
+      "reasoning": "Three clicks and a dropdown, each explained by the speaker.",
+      "cuttable": false,
+      "min_dur": 10.0,
+      "max_dur": 30.0,
+      "max_speed": 2.0,
+      "must_keep": [],
+      "screen_text": ["Reports", "Export", "CSV", "PDF"],
+      "by": "vlm"
+    },
+    {
+      "seg_id": "seg_04",
+      "label": "first attempt at export step",
+      "reasoning": "Speaker restarts the sentence and the menu is opened twice.",
+      "cuttable": true,
+      "min_dur": 0.3,
+      "max_dur": 3.0,
+      "max_speed": 2.0,
+      "must_keep": [],
+      "screen_text": [],
+      "by": "vlm"
+    },
+    {
+      "seg_id": "seg_05",
+      "label": "good take of save step",
+      "reasoning": "Clean second take. The save dialog and the Downloads folder are visible.",
+      "cuttable": false,
+      "min_dur": 4.0,
+      "max_dur": 10.0,
+      "max_speed": 2.0,
+      "must_keep": [[46.2, 52.0]],
+      "screen_text": ["Save", "Downloads"],
+      "by": "vlm"
+    },
+    {
+      "seg_id": "seg_06",
+      "label": "wrap-up",
+      "reasoning": "Closing line with the saved file on screen.",
+      "cuttable": false,
+      "min_dur": 4.0,
+      "max_dur": 10.0,
+      "max_speed": 2.0,
+      "must_keep": [],
+      "screen_text": ["Saved"],
+      "by": "vlm"
+    }
+  ],
+  "transcript_ctx": {
+    "steps": [
+      {"step_id": "step_1", "summary": "Introduce the quarterly report task", "span": [0.0, 12.4]},
+      {"step_id": "step_2", "summary": "Export the report from the Reports tab", "span": [18.0, 41.5]},
+      {"step_id": "step_3", "summary": "Save the file and confirm it is ready", "span": [46.2, 60.0]}
+    ],
+    "glossary": ["Reports", "Export", "PDF"],
+    "drops": [
+      {"span": [8.2, 8.9], "kind": "filler", "reason": "'um' before 'the quarterly report'"},
+      {"span": [24.1, 25.0], "kind": "false_start", "reason": "'the the' restart inside the menu walkthrough"},
+      {"span": [41.5, 46.2], "kind": "retake", "reason": "First attempt at the export step, restarted by the speaker"}
+    ]
+  },
+  "checks": [
+    {"name": "edl_covers_timeline", "passed": true, "target": "video_editor", "message": "", "ref_id": null},
+    {"name": "edl_spans_within_source", "passed": true, "target": "video_editor", "message": "", "ref_id": null},
+    {"name": "block_est_within_target", "passed": false, "target": "script_writer", "message": "est 3.8 s is below target 4.0 s", "ref_id": "b3"},
+    {"name": "nothing_invented", "passed": true, "target": "script_writer", "message": "", "ref_id": null}
+  ],
+  "flags": ["block_b3_below_target"]
+}

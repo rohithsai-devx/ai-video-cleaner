@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "taskClass": null,
+  "phase": "ready",
+  "task": null,
+  "fixedPoints": {
+    "base": null,
+    "head": null
+  },
+  "artifacts": {
+    "context": ".coding-powers/context.json",
+    "acceptance": ".coding-powers/acceptance.json",
+    "specs": ".coding-powers/specs",
+    "results": ".coding-powers/results",
+    "handoff": null
+  },
+  "nextAction": "Set the task and choose the first workflow stage.",
+  "blockers": [],
+  "updatedAt": null
+}

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Done, share</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500&family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAFAFA}
+a{color:#0A0A0A}a:hover{color:#3A3A3A}
+h1,h2{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:500!important;letter-spacing:-0.025em!important}
+</style>
+</helmet>
+<div style="font-family: Geist, system-ui, sans-serif; color: #0A0A0A; background: #FAFAFA; min-height: 900px">
+  <header style="height: 64px; border-bottom: 1px solid #EAEAEA; background: #FFFFFF; display: flex; align-items: center; gap: 16px; padding: 0 32px">
+    <a href="Library.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: #5C5C5C; text-decoration: none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Library
+    </a>
+    <span style="color: #DCDCDC">/</span>
+    <span style="font-size: 14px; font-weight: 500">Exporting invoices to CSV</span>
+    <span style="font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #DCFCE7; color: #166534">Ready</span>
+  </header>
+
+  <main style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start">
+    <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <div style="aspect-ratio: 16 / 9; background: #1F2430; border-radius: 24px; position: relative; overflow: hidden">
+        <div style="position: absolute; inset: 28px; background: #F4F4F2; border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 14px">
+          <span style="height: 14px; width: 26%; background: #DCDCDC; border-radius: 4px"></span>
+          <span style="height: 10px; width: 70%; background: #EAEAEA; border-radius: 4px"></span>
+          <span style="height: 10px; width: 64%; background: #EAEAEA; border-radius: 4px"></span>
+          <span style="height: 40px; width: 140px; background: #0A0A0A; border-radius: 6px; margin-top: 12px"></span>
+        </div>
+        <button aria-label="Play" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%; border: 0; background: rgba(10,10,10,0.82); color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em">Exporting invoices to CSV</h1>
+      <div style="display: flex; gap: 40px; flex-wrap: wrap">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 26px; font-weight: 600; font-family: 'Geist Mono', monospace">6:12 to 1:52</span>
+          <span style="font-size: 13px; color: #5C5C5C">Raw to cleaned</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 26px; font-weight: 600; font-family: 'Geist Mono', monospace">5 cuts</span>
+          <span style="font-size: 13px; color: #5C5C5C">1 kept back by you</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 26px; font-weight: 600; font-family: 'Geist Mono', monospace">AI voice</span>
+          <span style="font-size: 13px; color: #5C5C5C">Northwind narrator</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap">
+        <button style="height: 40px; padding: 0 16px; border-radius: 12px; border: 1px solid #DCDCDC; background: #FFFFFF; font: inherit; font-size: 14px; color: #0A0A0A">Download MP4</button>
+        <a href="Review.dc.html" style="height: 40px; padding: 0 16px; border-radius: 12px; border: 1px solid #DCDCDC; background: #FFFFFF; font-size: 14px; color: #0A0A0A; display: inline-flex; align-items: center; text-decoration: none">Edit and render again</a>
+      </div>
+    </section>
+
+    <aside style="flex: 1 1 380px; min-width: 0; background: #FFFFFF; border: 1px solid #EAEAEA; border-radius: 24px; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px">
+      <h2 style="margin: 0; font-size: 32px; font-weight: 600">Share</h2>
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+        <legend style="font-size: 14px; font-weight: 500; margin-bottom: 10px">Who can watch</legend>
+        <sc-for list="{{vis}}" as="o" hint-placeholder-count="3">
+          <button onClick="{{o.pick}}" style="text-align: left; border: {{o.border}}; background: {{o.bg}}; border-radius: 10px; padding: 12px 14px; font: inherit; color: #0A0A0A; display: flex; flex-direction: column; gap: 3px; cursor: pointer">
+            <span style="font-size: 15px; font-weight: 500">{{o.label}}</span>
+            <span style="font-size: 13px; color: #5C5C5C">{{o.hint}}</span>
+          </button>
+        </sc-for>
+      </fieldset>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label for="link" style="font-size: 14px; font-weight: 500">Link</label>
+        <div style="display: flex; gap: 8px">
+          <input id="link" readonly value="https://clean.northwind.io/s/k7Qm2xPa" style="flex: 1; min-width: 0; height: 42px; border: 1px solid #DCDCDC; border-radius: 12px; padding: 0 12px; font-family: 'Geist Mono', monospace; font-size: 13px; background: #FAFAFA; color: #0A0A0A">
+          <button onClick="{{copy}}" style="height: 42px; padding: 0 16px; border-radius: 12px; border: 0; background: #0A0A0A; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer">{{copyLabel}}</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label for="exp" style="font-size: 14px; font-weight: 500">Link expires</label>
+        <select id="exp" style="height: 42px; border: 1px solid #DCDCDC; border-radius: 12px; padding: 0 10px; font: inherit; font-size: 14px; background: #FFFFFF; color: #0A0A0A">
+          <option>Never</option>
+          <option>In 7 days</option>
+          <option>In 30 days</option>
+        </select>
+      </div>
+      <a href="Public.dc.html" style="font-size: 14px; font-weight: 500; color: #0A0A0A; text-decoration: underline">Preview the public page</a>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { vis: 'link', copied: false };
+}
+renderVals() {
+const cur = this.state.vis;
+const vis = [
+{ id: 'private', label: 'Only me', hint: 'Nobody else can open the link.' },
+{ id: 'workspace', label: 'Northwind workspace', hint: 'Members who are signed in.' },
+{ id: 'link', label: 'Anyone with the link', hint: 'No sign-in needed. Good for customers.' }
+].map((o) => ({ ...o, border: o.id === cur ? '2px solid #0A0A0A' : '2px solid #EAEAEA', bg: '#FFFFFF', pick: () => this.setState({ vis: o.id }) }));
+return { vis, copyLabel: this.state.copied ? 'Copied' : 'Copy', copy: () => this.setState({ copied: true }) };
+}
+}
+</script>
+</body>
+</html>

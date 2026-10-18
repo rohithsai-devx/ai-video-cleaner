@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
+coverage/
+# Local service data (compose bind mounts)
+.data/
+# Env and secrets
+.env
+.env.*
+!.env.example
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

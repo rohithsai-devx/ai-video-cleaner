@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500&family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAFAFA}
+a{color:#0A0A0A}a:hover{color:#3A3A3A}
+h1,h2{font-family:"Bricolage Grotesque",Geist,sans-serif;font-weight:500!important;letter-spacing:-0.025em!important}
+</style>
+</helmet>
+<div style="font-family: Geist, system-ui, sans-serif; color: #0A0A0A; background: #FAFAFA; min-height: 980px">
+  <header style="height: 64px; border-bottom: 1px solid #EAEAEA; background: #FFFFFF; display: flex; align-items: center; gap: 16px; padding: 0 32px; flex-wrap: wrap">
+    <div style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px">
+      <span style="width: 26px; height: 26px; border-radius: 7px; background: #0A0A0A; display: inline-flex; align-items: center; justify-content: center">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 4v16M12 8v8M18 6v12"/></svg>
+      </span>
+      Stepwise
+    </div>
+    <nav style="display: flex; gap: 4px; margin-left: 24px; font-size: 14px">
+      <a href="Library.dc.html" style="padding: 8px 12px; border-radius: 12px; background: #F3F3F3; color: #0A0A0A; text-decoration: none; font-weight: 500">Library</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 12px; color: #5C5C5C; text-decoration: none">Glossary</a>
+    </nav>
+    <div style="flex: 1"></div>
+    <label for="q" style="position: absolute; left: -9999px">Search videos</label>
+    <input id="q" placeholder="Search videos" style="width: 260px; height: 38px; border: 1px solid #DCDCDC; border-radius: 12px; padding: 0 12px; font: inherit; font-size: 14px; background: #FAFAFA; color: #0A0A0A">
+    <a href="Record.dc.html" style="height: 38px; padding: 0 16px; border-radius: 12px; background: #0A0A0A; color: #FFFFFF; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; text-decoration: none">
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #FF6B5A"></span>New recording
+    </a>
+    <span aria-label="Maya Okafor" style="width: 34px; height: 34px; border-radius: 50%; background: #E9E4F5; color: #3D2F73; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">MO</span>
+  </header>
+
+  <main style="max-width: 1280px; margin: 0 auto; padding: 40px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.02em">Library</h1>
+        <p style="margin: 0; color: #5C5C5C; font-size: 15px">Northwind workspace, 7 videos</p>
+      </div>
+      <div role="tablist" style="display: flex; gap: 4px; background: #EFEFEF; padding: 4px; border-radius: 10px; font-size: 14px">
+        <button style="border: 0; background: #FFFFFF; border-radius: 7px; padding: 7px 14px; font: inherit; font-weight: 500; color: #0A0A0A; box-shadow: 0 1px 2px rgba(10,10,10,0.08)">All</button>
+        <button style="border: 0; background: transparent; border-radius: 7px; padding: 7px 14px; font: inherit; color: #5C5C5C">Needs review</button>
+        <button style="border: 0; background: transparent; border-radius: 7px; padding: 7px 14px; font: inherit; color: #5C5C5C">Ready</button>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px">
+      <sc-for list="{{videos}}" as="v" hint-placeholder-count="7">
+        <a href="{{v.href}}" style="display: flex; flex-direction: column; gap: 12px; text-decoration: none; color: #0A0A0A">
+          <div style="aspect-ratio: 16 / 10; border-radius: 16px; background: {{v.thumb}}; position: relative; overflow: hidden; border: 0">
+            <div style="position: absolute; inset: 14px 14px auto 14px; display: flex; flex-direction: column; gap: 6px">
+              <span style="height: 8px; width: 46%; background: rgba(10,10,10,0.14); border-radius: 3px"></span>
+              <span style="height: 8px; width: 70%; background: rgba(10,10,10,0.08); border-radius: 3px"></span>
+              <span style="height: 8px; width: 58%; background: rgba(10,10,10,0.08); border-radius: 3px"></span>
+            </div>
+            <span style="position: absolute; right: 10px; bottom: 10px; background: rgba(10,10,10,0.78); color: #FFFFFF; font-family: 'Geist Mono', monospace; font-size: 12px; padding: 3px 7px; border-radius: 6px">{{v.dur}}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="font-size: 15px; font-weight: 500; line-height: 1.35">{{v.title}}</div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5C5C5C">
+              <span style="padding: 2px 8px; border-radius: 999px; font-weight: 500; background: {{v.badgeBg}}; color: {{v.badgeFg}}">{{v.status}}</span>
+              <span>{{v.meta}}</span>
+            </div>
+          </div>
+        </a>
+      </sc-for>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const S = {
+ready: ['Ready', '#DCFCE7', '#166534'],
+review: ['Needs review', '#FFF4E5', '#7A4100'],
+proc: ['Processing', '#F1EEFB', '#3A3A3A'],
+render: ['Rendering', '#F1EEFB', '#3A3A3A'],
+up: ['Uploaded', '#EFEFEF', '#3A3A3A'],
+failed: ['Failed', '#FDE2E1', '#9F1D15']
+};
+const v = (title, dur, s, meta, href, thumb) => ({ title, dur, status: S[s][0], badgeBg: S[s][1], badgeFg: S[s][2], meta, href, thumb });
+return {
+videos: [
+v('Setting up SSO for the billing team', '2:04', 'ready', 'Shared, 14 views', 'Share.dc.html', '#EEEEF0'),
+v('Exporting invoices to CSV', '6:12', 'review', '2 flags from the agent', 'Review.dc.html', '#E4E4E8'),
+v('Q3 pipeline review walkthrough', '11:40', 'proc', 'Agent writing the script', 'Progress.dc.html', '#ECE8FA'),
+v('Bug repro: coupon field rejects valid codes', '3:27', 'up', 'Not processed yet', 'Recorded.dc.html', '#F0F0F0'),
+v('Inviting contractors with limited access', '4:51', 'render', 'Rendering with AI voice', 'Progress.dc.html', '#E8E8EA'),
+v('Weekly metrics dashboard tour', '8:03', 'failed', 'Render failed, retry available', 'Progress.dc.html', '#E9E9EB'),
+v('Connecting the Slack alerts integration', '1:58', 'ready', 'Private', 'Share.dc.html', '#EEEEF0')
+]
+};
+}
+}
+</script>
+</body>
+</html>

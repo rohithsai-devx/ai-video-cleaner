@@ -1,0 +1,113 @@
+import type { components } from "@/api/generated/schema";
+
+type S = components["schemas"];
+export type ProposalDoc = S["Proposal"];
+export type Entry = S["EDLEntry"];
+export type Check = S["CheckResult"];
+export type ProposalUpdate = S["ProposalUpdate"];
+
+/** Local edits on top of a saved proposal: block texts and the cut segments flipped back to keep. */
+export type Draft = { texts: Record<string, string>; kept: Record<string, boolean> };
+export const emptyDraft: Draft = { texts: {}, kept: {} };
+
+export function isDirty(base: ProposalDoc, draft: Draft): boolean {
+  const textChanged = base.script.blocks.some(
+    (b) => draft.texts[b.block_id] !== undefined && draft.texts[b.block_id] !== b.text,
+  );
+  const flipped = base.edit_plan.entries.some((e) => e.action === "cut" && draft.kept[e.seg_id]);
+  return textChanged || flipped;
+}
+
+export function effectiveEntries(base: ProposalDoc, draft: Draft): Entry[] {
+  return base.edit_plan.entries.map((e) =>
+    e.action === "cut" && draft.kept[e.seg_id]
+      ? { ...e, action: "keep", speed: 1, freeze_s: 0 }
+      : e,
+  );
+}
+
+/** The PUT body: the saved proposal with only the user's allowed edits applied, on its version. */
+export function toUpdate(base: ProposalDoc, draft: Draft): ProposalUpdate {
+  return {
+    base_version: base.version,
+    script: {
+      ...base.script,
+      blocks: base.script.blocks.map((b) => ({ ...b, text: draft.texts[b.block_id] ?? b.text })),
+    },
+    edit_plan: { ...base.edit_plan, entries: effectiveEntries(base, draft) },
+    seg_contexts: base.seg_contexts,
+  };
+}
+
+/** Review edits and approval are allowed only while the run awaits review. */
+export function isReviewable(status: string | undefined): boolean {
+  return status === "awaiting_review";
+}
+
+/** The machine code of a 409 detail (`version_conflict`, `not_awaiting_review`, ...), or null. */
+export function conflictCode(detail: unknown): string | null {
+  if (detail && typeof detail === "object" && "code" in detail) {
+    const code = (detail as { code: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+  return null;
+}
+
+export function entryLength(e: Entry): number {
+  return Math.max(0, e.src[1] - e.src[0]);
+}
+
+export function outputLength(entries: Entry[]): number {
+  return entries.reduce((sum, e) => {
+    if (e.action === "cut") return sum;
+    if (e.action === "speed") return sum + entryLength(e) / (e.speed || 1);
+    if (e.action === "freeze") return sum + e.freeze_s;
+    return sum + entryLength(e);
+  }, 0);
+}
+
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+export function spanLabel(e: Entry): string {
+  return e.action === "freeze"
+    ? formatClock(e.src[0])
+    : `${formatClock(e.src[0])} to ${formatClock(e.src[1])}`;
+}
+
+export function actionLabel(e: Entry): string {
+  if (e.action === "speed") return `Speed ${e.speed}x`;
+  if (e.action === "freeze") return `Hold ${e.freeze_s} s`;
+  return e.action === "cut" ? "Cut" : "Keep";
+}
+
+/** Failing checks from an approve 422: the body detail is a check object, a string, or a validation list. */
+export function failingChecks(detail: unknown): string[] {
+  if (typeof detail === "string") return [detail];
+  if (Array.isArray(detail)) {
+    return detail.map((d) =>
+      typeof d === "object" && d && "msg" in d ? String(d.msg) : String(d),
+    );
+  }
+  if (detail && typeof detail === "object") {
+    const d = detail as { passed?: boolean; name?: string; message?: string };
+    return [d.message || d.name || "A check failed"];
+  }
+  return ["A check failed"];
+}
+
+export function failedProposalChecks(p: ProposalDoc): Check[] {
+  return p.checks.filter((c) => !c.passed);
+}
+
+/** "The agent flagged 1 thing" / "2 things". Counts failed checks only; raw flag ids are never shown. */
+export function flagHeading(count: number): string {
+  return `The agent flagged ${count} ${count === 1 ? "thing" : "things"}`;
+}
+
+/** Ids (script block or EDL segment) that a failed check points at. */
+export function flaggedRefIds(checks: Check[]): Set<string> {
+  return new Set(checks.map((c) => c.ref_id).filter((r): r is string => Boolean(r)));
+}

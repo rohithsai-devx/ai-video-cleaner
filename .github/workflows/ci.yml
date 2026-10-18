@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: avc
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d avc"
+          --health-interval 2s
+          --health-retries 30
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      # migrations and check_db only; the app connects as app_api
+      DATABASE_URL_ADMIN: postgresql://postgres:postgres@localhost:5432/avc
+      DATABASE_URL_API: postgresql://app_api:app_api_ci@localhost:5432/avc
+      APP_API_PASSWORD: app_api_ci
+      APP_WORKER_PASSWORD: app_worker_ci
+      APP_RELAY_PASSWORD: app_relay_ci
+      DATABASE_URL_WORKER: postgresql://app_worker:app_worker_ci@localhost:5432/avc
+      DATABASE_URL_RELAY: postgresql://app_relay:app_relay_ci@localhost:5432/avc
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123
+      REDIS_URL: redis://localhost:6379/0
+      STORAGE_EMULATOR_HOST: http://localhost:4443
+      GCS_BUCKET: avc-ci
+      FAKE_WORKER: "true"
+    steps:
+      - uses: actions/checkout@v4
+      # fake-gcs needs command-line flags, which job services cannot pass
+      - name: Start fake-gcs-server
+        run: >
+          docker run -d -p 4443:4443 fsouza/fake-gcs-server:1.52.2
+          -scheme http -port 4443 -external-url http://localhost:4443 -public-host localhost:4443
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Layout
+        run: uv run python scripts/check_layout.py
+      - run: uv run pyright
+      - name: RLS and integrity tests
+        run: uv run python scripts/check_db.py
+      - name: Migrate the service database for pytest
+        run: uv run python scripts/migrate.py --dev-passwords
+      - name: pytest
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # contract drift against backend/openapi.json, layout, format, lint, types, unit tests
+      - run: npm run check
+      - run: npm run build
