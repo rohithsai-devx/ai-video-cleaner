@@ -7,11 +7,13 @@ GCS using ADC and V4 signed URLs; credentials without a private key (Cloud Run)
 sign through IAM.
 
 The sync client runs in ``asyncio.to_thread``; async callers keep these calls
-outside ``tenant_tx``.
+outside ``tenant_tx``. ``download_to`` and ``upload_file`` stream a path, so a long
+MP4 is never loaded into memory.
 """
 
 import asyncio
 from datetime import timedelta
+from os import PathLike, fspath
 from urllib.parse import quote
 from uuid import UUID
 
@@ -60,6 +62,18 @@ class GcsStorage:
     def output_uri(self, run_id: UUID | str, version: int) -> str:
         return self._uri(f"runs/{run_id}/post/v{version}/final.mp4")
 
+    def output_poster_uri(self, run_id: UUID | str, version: int) -> str:
+        return self._uri(f"runs/{run_id}/post/v{version}/poster.jpg")
+
+    def mezz_uri(self, run_id: UUID | str) -> str:
+        return self._uri(f"runs/{run_id}/pre/mezz.mp4")
+
+    def audio_uri(self, run_id: UUID | str) -> str:
+        return self._uri(f"runs/{run_id}/pre/audio.wav")
+
+    def frame_uri(self, run_id: UUID | str, frame_id: str) -> str:
+        return self._uri(f"runs/{run_id}/pre/frames/{frame_id}.jpg")
+
     def _uri(self, key: str) -> str:
         return f"gs://{self.bucket_name}/{key}"
 
@@ -97,16 +111,36 @@ class GcsStorage:
         await asyncio.to_thread(self._copy, src, dst)
 
     async def put(self, uri: str, data: bytes, content_type: str) -> None:
-        """Write a small object (worker artifacts, test seeding). Large media uses upload_session."""
+        """Write a small object (worker artifacts, test seeding). Large media uses upload_file."""
         key = self._own_key(uri)
         if key is None:
             raise ValueError(f"put is limited to bucket {self.bucket_name}: {uri}")
         await asyncio.to_thread(self._blob(key).upload_from_string, data, content_type=content_type)
 
+    async def download_to(self, uri: str, path: str | PathLike[str]) -> None:
+        """Stream an object to a file. The parent directory of ``path`` must exist."""
+        key = self._own_key(uri)
+        if key is None:
+            raise ValueError(f"download is limited to bucket {self.bucket_name}: {uri}")
+        await asyncio.to_thread(self._download_to, key, fspath(path))
+
+    async def upload_file(self, uri: str, path: str | PathLike[str], content_type: str) -> None:
+        """Stream a file to an object. Does not read the file into memory first."""
+        key = self._own_key(uri)
+        if key is None:
+            raise ValueError(f"upload is limited to bucket {self.bucket_name}: {uri}")
+        await asyncio.to_thread(self._upload_file, key, fspath(path), content_type)
+
     # --- sync internals ----------------------------------------------------------------
 
     def _blob(self, key: str) -> storage.Blob:
         return self.client.bucket(self.bucket_name).blob(key)
+
+    def _download_to(self, key: str, filename: str) -> None:
+        self._blob(key).download_to_filename(filename)
+
+    def _upload_file(self, key: str, filename: str, content_type: str) -> None:
+        self._blob(key).upload_from_filename(filename, content_type=content_type)
 
     def _upload_session(self, key: str, content_type: str) -> str:
         uri = self._blob(key).create_resumable_upload_session(content_type=content_type, origin=self.origin)

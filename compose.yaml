@@ -23,3 +23,28 @@ services:
         -scheme http -port 4443 -external-url http://localhost:4443 -public-host localhost:4443
     volumes: ["./.data/gcs:/storage"]
     ports: ["4443:4443"]
+  # A second long-running relay would double-process runs, so this stays off `docker compose up`.
+  worker:
+    profiles: ["media"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    volumes:
+      - ./backend:/app
+      - worker-venv:/app/.venv # the image syncs its own env; do not replace backend/.venv on the Mac
+    working_dir: /app
+    command: uv run python -m app.pipeline.worker
+    depends_on: [postgres, gcs]
+    environment:
+      DATABASE_URL_WORKER: postgresql://app_worker:app_worker_dev@host.docker.internal:54329/avc
+      DATABASE_URL_RELAY: postgresql://app_relay:app_relay_dev@host.docker.internal:54329/avc
+      DATABASE_URL_API: postgresql://app_api:app_api_dev@host.docker.internal:54329/avc
+      STORAGE_EMULATOR_HOST: http://host.docker.internal:4443
+      GCS_BUCKET: avc-local
+      REDIS_URL: redis://host.docker.internal:63799/0
+      JWT_SECRET: local-dev-only-secret-change-me-0123456789
+      FRONTEND_BASE_URL: http://localhost:3000
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+volumes:
+  worker-venv:

@@ -263,6 +263,141 @@ class _Broken(FixtureEngines):
         await super().render(run, proposal, output_uri)
 
 
+class _BoomPreprocess(FixtureEngines):
+    """Raises in preprocess after the run has already committed to preprocessing."""
+
+    def __init__(self, storage: GcsStorage, user_id: UUID, run_id: UUID) -> None:
+        super().__init__(storage)
+        self._user_id = user_id
+        self._run_id = run_id
+        self.saw: str | None = None
+
+    async def preprocess(self, run: Any, raw_uri: str) -> Any:
+        self.saw = (await _status(self._user_id, self._run_id))["status"]
+        raise RuntimeError("boom")
+
+
+class _PreprocessAfterCommit(FixtureEngines):
+    """Succeeds only once the committed status is already preprocessing."""
+
+    def __init__(self, storage: GcsStorage, user_id: UUID, run_id: UUID) -> None:
+        super().__init__(storage)
+        self._user_id = user_id
+        self._run_id = run_id
+
+    async def preprocess(self, run: Any, raw_uri: str) -> Any:
+        assert (await _status(self._user_id, self._run_id))["status"] == "preprocessing"
+        return await super().preprocess(run, raw_uri)
+
+
+async def test_preprocess_failure_after_status_commit_marks_the_run_failed(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    engines = _BoomPreprocess(storage, uid, run_id)
+    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    events = await stages.handle(task, engines, storage)
+    assert engines.saw == "preprocessing"  # beat 1 committed before ffmpeg
+    name, err = events[-1]
+    assert name == "run.failed" and err.stage == "pre-cpu" and err.retryable is True
+    row = await _status(uid, run_id)
+    assert row["status"] == "failed" and row["video_status"] == "failed"
+
+
+async def test_preprocess_sees_committed_status_and_a_replay_is_a_no_op(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    engines = _PreprocessAfterCommit(storage, uid, run_id)
+    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+
+    first = await stages.handle(task, engines, storage)
+    assert [name for name, _ in first][-1] == "run.status"
+    assert (await _status(uid, run_id))["status"] == "agent_running"
+    async with db.tenant_tx(uid) as conn:
+        cur = await conn.execute(
+            "select r.pre, v.duration_s from runs r join videos v on v.id = r.video_id where r.id = %s",
+            (run_id,),
+        )
+        written = await cur.fetchone()
+    assert written is not None
+    assert written["pre"]["duration"] == 12
+    assert float(written["duration_s"]) == 12.0
+
+    assert await stages.handle(task, engines, storage) == []
+    assert (await _status(uid, run_id))["status"] == "agent_running"
+
+
+async def test_preprocessing_redelivery_finishes_the_stage(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    """A crash after the status commit leaves the run preprocessing; the next handle finishes it."""
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    async with db.worker_tx(ws) as conn:
+        run = await lifecycle.load(conn, run_id)
+        assert run is not None and run.status == "queued"
+        await lifecycle.advance(conn, run, "preprocessing", stage="preprocess")
+
+    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    events = await stages.handle(task, FixtureEngines(storage), storage)
+    assert [name for name, _ in events][-1] == "run.status"
+    assert (await _status(uid, run_id))["status"] == "agent_running"
+
+
+async def test_relay_sets_sent_at_only_after_handle(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    seen: dict[UUID, Any] = {}
+
+    class _Watch(FixtureEngines):
+        async def preprocess(self, run: Any, raw_uri: str) -> Any:
+            relay_url = get_settings().database_url_relay
+            assert relay_url
+            conn = await db.connect_as(relay_url, db.RELAY_ROLE)
+            try:
+                cur = await conn.execute(
+                    "select sent_at from outbox where run_id = %s and queue = 'pre-cpu'", (run.id,)
+                )
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row is not None
+            seen[run.id] = row["sent_at"]
+            return await super().preprocess(run, raw_uri)
+
+    stop = asyncio.Event()
+    worker = asyncio.create_task(relay.run_in_process(stop, _Watch(storage), storage))
+    try:
+        uid = await _signup(api)
+        run_id, _, _ = await _start_run(uid, "auto", storage)
+        await _wait_status(uid, run_id, "done")
+    finally:
+        stop.set()
+        await asyncio.wait_for(worker, TIMEOUT_S)
+
+    assert seen[run_id] is None  # claim holds the row, but sent_at waits until handle returns
+    relay_url = get_settings().database_url_relay
+    assert relay_url
+    # done commits inside handle; sent_at is the next statement, so poll for it
+    async with asyncio.timeout(TIMEOUT_S):
+        while True:
+            conn = await db.connect_as(relay_url, db.RELAY_ROLE)
+            try:
+                cur = await conn.execute(
+                    "select queue, sent_at from outbox where run_id = %s order by id", (run_id,)
+                )
+                rows = await cur.fetchall()
+            finally:
+                await conn.close()
+            queues = {r["queue"] for r in rows}
+            if queues >= {"pre-cpu", "agent", "post-io"} and all(r["sent_at"] is not None for r in rows):
+                break
+            await asyncio.sleep(0.05)
+
+
 @pytest.mark.parametrize(
     ("mode", "where", "queue"), [("review", "agent", "agent"), ("auto", "render", "post-io")]
 )

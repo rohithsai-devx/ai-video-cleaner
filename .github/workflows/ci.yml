@@ -60,6 +60,8 @@ jobs:
         run: uv run python scripts/check_db.py
       - name: Migrate the service database for pytest
         run: uv run python scripts/migrate.py --dev-passwords
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: pytest
         run: uv run pytest
 

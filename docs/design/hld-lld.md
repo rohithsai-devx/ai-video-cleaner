@@ -1100,7 +1100,7 @@ Twelve facts were checked against primary docs, and four of them also by running
 
 ### Next steps
 
-The build order is the four-phase plan in [../plan/phases.md](../plan/phases.md). Detailed research notes are in [../research/findings-2026-10-17.md](../research/findings-2026-10-17.md).
+The build order is in [../plan/phases.md](../plan/phases.md). Phase 3 is split: 3a builds the code in pre and post and stubs `transcribe` and TTS; 3b adds the provider factory and the agent. Detailed research notes are in [../research/findings-2026-10-17.md](../research/findings-2026-10-17.md).
 
 ### Sources
 

@@ -1,4 +1,4 @@
-# Build plan: four phases
+# Build plan
 
 Agreed 2026-10-17. Each phase ends with a working, demoable system, and each phase builds only on the contract the one before it fixed. The design is in [../design/hld-lld.md](../design/hld-lld.md).
 
@@ -6,7 +6,8 @@ Agreed 2026-10-17. Each phase ends with a working, demoable system, and each pha
 | --- | --- | --- | --- |
 | 1 | Backend foundation and API contract | Python setup, shared types, Postgres schema + RLS, JWT auth, every router | Run processing (a fake worker walks the status lifecycle) |
 | 2 | Front-end prototype, the product vision | Next.js app: every screen, recorder, upload, live status, review, share | Backend AI (still phase 1 stubs) |
-| 3 | Real pipeline | Preprocess → agents → postprocess, queues, outbox relay | Nothing in the core loop |
+| 3a | Pre and post, code only | Queues, ffmpeg ingest, frames, segments, `fit_timeline`, render, publish | Transcription, TTS, and the agent (the fixture proposal stays) |
+| 3b | Providers and the agent | One adapter per stage, the LangGraph graph, real words and real voice | — |
 | 4 | End to end and hardening | E2E tests, load test at 200 concurrent runs, GCP deploy, observability | — |
 
 ## Phase 1: backend foundation and API contract
@@ -24,10 +25,10 @@ Goal: the full API exists, is typed, is secured by JWT and RLS, and returns real
 Exit criteria:
 
 - [x] Every endpoint in the API table exists and returns model-valid data.
-- [ ] RLS tests pass in CI against Postgres 16. (Pass locally on Postgres 16 via `scripts/check_db.py`; CI has not run yet.)
+- [x] RLS tests pass in CI against Postgres 16. (First CI run green, 2026-10-18.)
 - [x] A user can sign up, sign in, and call protected endpoints; a second user cannot see the first user's data.
 - [x] A fake run reaches `awaiting_review` with live SSE events, and `approve` moves it to `done`.
-- [ ] `openapi.json` is generated and committed. (Generated at `backend/openapi.json`; not committed yet.)
+- [x] `openapi.json` is generated and committed (`backend/openapi.json`, commit 192f836).
 
 Decided at phase start (2026-10-18):
 
@@ -45,7 +46,7 @@ Goal: the product as a user sees it, clickable end to end against the phase 1 AP
 - Review screen: script blocks, cut list with reasoning, flagged blocks highlighted, approve or edit.
 - Typed API client generated from `openapi.json`. No hand-written mocks that could drift from the backend.
 
-- [x] Exit criteria: the full screen flow clicks through in the browser with stub AI output, in review mode and in auto mode. (Met locally 2026-10-18: 10 Playwright specs incl. a real recorder run with Chrome fake devices, two independent black-box verification passes, code review findings fixed. Committing and the first CI run are still pending.)
+- [x] Exit criteria: the full screen flow clicks through in the browser with stub AI output, in review mode and in auto mode. (Met locally 2026-10-18: 10 Playwright specs incl. a real recorder run with Chrome fake devices, two independent black-box verification passes, code review findings fixed. Committed in 192f836; first CI run green.)
 
 Decided at phase start (2026-10-18):
 
@@ -56,18 +57,38 @@ Decided at phase start (2026-10-18):
 - **Share visibility default: anyone with the link** (`link`, the backend default). Share URLs use a new `FRONTEND_BASE_URL` setting.
 - **Stack** (versions in [../research/frontend-stack-2026-10-18.md](../research/frontend-stack-2026-10-18.md)): Next.js 16 App Router, React 19, TypeScript, Tailwind 4, `openapi-typescript` + `openapi-fetch` + `openapi-react-query` on TanStack Query 5, Vitest, Playwright. `output: 'standalone'` for Cloud Run.
 
-## Phase 3: real pipeline (preprocess → agents → postprocess)
+## Phase 3a: pre and post, code only
 
-Goal: a real recording goes in and a cleaned video comes out, replacing the fake worker stage by stage.
+Goal: a real recording is probed, transcoded, framed and segmented, and an approval renders a real MP4. No model is called. `Engines.propose` stays the fixture. The design of each step is in [../design/hld-lld.md](../design/hld-lld.md) (preprocessing, postprocessing, queues).
 
-1. **Queues:** outbox relay, Cloud Tasks (or a local equivalent), workers per queue, hashed task ids.
-2. **Preprocessing:** ingest (ffmpeg, starting with ffprobe: fail the run when the real duration exceeds `MAX_RECORDING_SECONDS`, since phase 2 trusts the browser's figure; replace the browser poster with a chosen keyframe), transcription with word timestamps, keyframes, segments into `runs.pre`. Tune `pause_ms` and `ε` on 5 real recordings.
-3. **Agents:** provider factory with one adapter per stage; the LangGraph graph (orchestrator + `vlm_context`, `transcript_context`, `script_writer`, `video_editor`) with `durability="sync"` and a PostgresSaver in schema `lg`. Code checks are written test-first. Calibrate the decider on our own data before trusting `accept_threshold`.
-4. **Postprocessing:** TTS (ElevenLabs character timings grouped into words), `fit_timeline` (pure, test-first), render, publish. Renders over 30 minutes run as Cloud Run Jobs.
+Model calls that the design lists inside pre and post move to phase 3b: `transcribe` and `voice` (TTS). Phase 3a stubs those two and builds everything around them.
+
+1. **Workers.** Keep the outbox and `run_in_process` as the local Cloud Tasks stand-in. Hashed task ids stay. ffmpeg is not on the Mac, so the relay runs in a compose service that has ffmpeg. Phase 4 is what swaps the relay for Cloud Tasks. Renders over 30 minutes stay a phase 4 Cloud Run Job.
+2. **Preprocess, code.** `ffprobe` first: fail the run when the real duration exceeds `MAX_RECORDING_SECONDS` (900). Transcode to the mezzanine MP4 and the WAV, sample keyframes, replace the browser poster with a chosen frame, segment on scene changes, write `runs.pre`. Speech-pause boundaries wait for real words, so `pause_ms` is not tuned here.
+3. **Transcribe, stub.** `words` is a fixture timed to the real duration. Scene segments are real.
+4. **Propose, unchanged.** The fixture proposal must be valid for that real duration, so approving a short recording no longer returns 422.
+5. **Postprocess, code.** `fit_timeline` is a pure function, written test-first. Original-audio mode cuts the real WAV. AI-voice mode uses a stub clip of the estimated duration, not ElevenLabs. Then ffmpeg renders, writes the MP4 and poster to the fixed paths, and publish marks the video ready.
+
+Exit criteria:
+
+- [ ] A recording over 900 seconds fails in preprocess. A shorter one stores real duration, keyframes and segments on `runs.pre`.
+- [ ] Approving it renders a playable MP4 in both voice modes (AI voice uses the stub clip).
+- [ ] A review edit still creates a user proposal and re-renders.
+- [ ] Killing the worker mid-stage and redelivering the task finishes the same output path.
+
+## Phase 3b: providers and the agent
+
+Goal: the fixture proposal is replaced by the agent, and the two stubs become real providers.
+
+1. **Provider factory.** One adapter per stage. Interfaces stay the ones in the design (`Transcriber`, `VisionDescriber`, `LLM`, `Decider`, `TTS`).
+2. **Transcribe.** Word timestamps. Segment also cuts on pauses. Tune `pause_ms` and `ε` on real recordings.
+3. **Agent.** LangGraph: orchestrator plus `vlm_context`, `transcript_context`, `script_writer`, `video_editor`. `durability="sync"` and a PostgresSaver in schema `lg`. Code checks are written test-first and shared with the review API. `merge_by` on redo.
+4. **Voice.** Real TTS. Character timings grouped into words. The frontend voice list comes from this provider instead of the placeholder `default` option.
+5. **Resume.** A killed agent worker continues from its checkpoint.
 
 Exit criteria: 5 real recordings processed in both modes; review edits create a user proposal and re-render; a killed worker resumes from its checkpoint.
 
-Decide during phase 3: v1 provider per stage, default voice, `accept_threshold` and `max_attempts` defaults.
+Decide at the start of 3b, one at a time: the v1 provider for each stage, the default voice, and the `accept_threshold` and `max_attempts` defaults. Calibrate the decider on our own data before trusting `accept_threshold`.
 
 ## Phase 4: end to end and hardening
 
