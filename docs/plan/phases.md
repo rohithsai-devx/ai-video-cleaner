@@ -78,17 +78,19 @@ Exit criteria:
 
 ## Phase 3b: providers and the agent
 
-Goal: the fixture proposal is replaced by the agent, and the two stubs become real providers.
+Goal: the fixture proposal is replaced by the agent. Speech is real. The transcript stays the timed stub until an ElevenLabs key exists. The settled spec is [../.coding-powers/specs/phase3b.md](../.coding-powers/specs/phase3b.md) (GitHub issue 1).
 
-1. **Provider factory.** One adapter per stage. Interfaces stay the ones in the design (`Transcriber`, `VisionDescriber`, `LLM`, `Decider`, `TTS`).
-2. **Transcribe.** Word timestamps. Segment also cuts on pauses. Tune `pause_ms` and `ε` on real recordings.
-3. **Agent.** LangGraph: orchestrator plus `vlm_context`, `transcript_context`, `script_writer`, `video_editor`. `durability="sync"` and a PostgresSaver in schema `lg`. Code checks are written test-first and shared with the review API. `merge_by` on redo.
-4. **Voice.** Real TTS. Character timings grouped into words. The frontend voice list comes from this provider instead of the placeholder `default` option.
-5. **Resume.** A killed agent worker continues from its checkpoint.
+1. **Model client.** One bundle, one plugin per method. Chat is `gpt-6-luna`. Vision uses an OpenAI-compatible endpoint when `GEMMA_BASE_URL` is set, authenticated by `GEMMA_API_KEY` or a separate Modal proxy-token pair. Yes/no is Laya on MLX in the Mac agent process. Speech is `gpt-4o-mini-tts-2025-12-15` until ElevenLabs. Anthropic, Jev, and ElevenLabs are later plugins behind the same methods.
+2. **Transcribe.** Stays the timed stub. Pause cuts and the frontend voice list wait for the ElevenLabs key.
+3. **Agent.** LangGraph: orchestrator plus `vlm_context`, `transcript_context`, `script_writer`, `video_editor`. A failed check routes to that check's target. A capped proposal goes to review even in auto mode. `durability="sync"` and a PostgresSaver in schema `lg`. Code checks are test-first and re-run on every review edit.
+4. **Voice.** After approval, each block is synthesized, measured, fitted, and muxed. The stage passes the run's voice into render. OpenAI speech has no word timings.
+5. **Resume.** A redelivered agent task continues from its checkpoint with no new input.
 
-Exit criteria: 5 real recordings processed in both modes; review edits create a user proposal and re-render; a killed worker resumes from its checkpoint.
+Exit criteria: a recording processed in both voice modes (AI voice uses OpenAI speech; words stay the stub); a capped auto run stops on review and does not render; a review edit re-runs the checks and re-renders; a killed agent worker resumes from its checkpoint.
 
-Decide at the start of 3b, one at a time: the v1 provider for each stage, the default voice, and the `accept_threshold` and `max_attempts` defaults. Calibrate the decider on our own data before trusting `accept_threshold`.
+Local setup and the manual pass before phase 4: [../setup/local-agent.md](../setup/local-agent.md), [../uat/phase3-agent.md](../uat/phase3-agent.md).
+
+Two workers at a time: checks beside the OpenAI plugins, then the graph beside the Laya plugin, then voice wiring alone.
 
 ## Phase 4: end to end and hardening
 

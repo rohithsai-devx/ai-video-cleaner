@@ -35,6 +35,30 @@ class Settings(BaseSettings):
 
     frontend_base_url: str = "http://localhost:3000"  # share links point here
 
+    # Model calls. An empty key or an empty Gemma URL fails that call closed.
+    openai_api_key: SecretStr = SecretStr("")
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_chat_model: str = "gpt-6-luna"
+    openai_speech_model: str = "gpt-4o-mini-tts-2025-12-15"
+    openai_speech_voice: str = "coral"
+    gemma_base_url: str = ""
+    gemma_api_key: SecretStr = SecretStr("")
+    modal_proxy_token_id: str = ""
+    modal_proxy_token_secret: SecretStr = SecretStr("")
+    gemma_model: str = "gemma-4"
+
+    @property
+    def gemma_bearer_token(self) -> SecretStr:
+        if self.gemma_api_key.get_secret_value():
+            return self.gemma_api_key
+        token_id = self.modal_proxy_token_id.strip()
+        token_secret = self.modal_proxy_token_secret.get_secret_value()
+        if bool(token_id) != bool(token_secret):
+            raise ValueError("set both MODAL_PROXY_TOKEN_ID and MODAL_PROXY_TOKEN_SECRET")
+        if token_id:
+            return SecretStr(f"{token_id}.{token_secret}")
+        return SecretStr("")
+
 
 @lru_cache
 def get_settings() -> Settings:

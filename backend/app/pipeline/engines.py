@@ -8,6 +8,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
+from app.contracts.enums import VoiceMode
 from app.contracts.pipeline import (
     CheckResult,
     EditPlan,
@@ -27,6 +28,7 @@ class AgentOutput(BaseModel):
     transcript_ctx: TranscriptContext
     checks: list[CheckResult]
     flags: list[str] = []
+    accepted: bool = True  # false when the agent hit its attempt cap; fixture JSON omits it
 
 
 class Engines(Protocol):
@@ -34,4 +36,6 @@ class Engines(Protocol):
 
     async def propose(self, run: RunRef, pre: PreprocessResult) -> AgentOutput: ...
 
-    async def render(self, run: RunRef, proposal: Proposal, output_uri: str) -> None: ...
+    async def render(
+        self, run: RunRef, proposal: Proposal, output_uri: str, *, voice: VoiceMode = "original"
+    ) -> None: ...

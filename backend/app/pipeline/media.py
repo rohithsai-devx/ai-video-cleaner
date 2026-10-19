@@ -1,25 +1,32 @@
 """Probe, transcode, frame, and render a recording with the ffmpeg binaries.
 
-No model calls. ``RecordingTooLong`` is raised from the probed duration before any transcode.
+No model calls. AI voice muxes clips from an injected speaker; without one it keeps a silent stub.
+``RecordingTooLong`` is raised from the probed duration before any transcode.
 """
 
 import asyncio
 import json
 import re
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from app.contracts.enums import VoiceMode
 from app.contracts.pipeline import Drop, EDLEntry, Keyframe, PreprocessResult, Proposal, ScriptBlock
 from app.pipeline.segment import segment
 from app.pipeline.timeline import fit_timeline
 from app.pipeline.words import stub_words
+from app.providers.errors import ProviderError
 from app.runs.lifecycle import RunRef
 from app.shared.config import MAX_RECORDING_SECONDS
 from app.shared.storage import GcsStorage
+
+# Same budget as the graph's RetryPolicy: three attempts, then the error fails the stage.
+_SPEAK_ATTEMPTS = 3
+Speaker = Callable[[str], tuple[bytes, float]]
 
 # Same epsilon ``segment`` uses. Scene frames above this become segment cuts.
 _SCENE = 0.3
@@ -66,12 +73,17 @@ class RenderPlan:
     audio_seconds: float
 
 
-def plan_render(proposal: Proposal, *, voice: VoiceMode) -> RenderPlan:
+def plan_render(
+    proposal: Proposal, *, voice: VoiceMode, audio_s_by_block: Mapping[str, float] | None = None
+) -> RenderPlan:
     """Fit the edit plan to block audio. AI voice is narration, so it is never sped up."""
     narration = voice == "ai"
     drops = proposal.transcript_ctx.drops
     if narration:
-        targets = {block.block_id: block.est_dur for block in proposal.script.blocks}
+        measured = audio_s_by_block or {}
+        targets = {
+            block.block_id: measured.get(block.block_id, block.est_dur) for block in proposal.script.blocks
+        }
     else:
         targets = {block.block_id: _kept(block.source_span, drops) for block in proposal.script.blocks}
     return RenderPlan(
@@ -102,7 +114,7 @@ async def probe(path: Path) -> Probe:
         raise RuntimeError(f"no video stream in {path}")
     fps, rate = _rate(video)
     return Probe(
-        duration=_duration(data, video),
+        duration=await _duration(path, data, video),
         fps=fps,
         rate=rate,
         width=int(video["width"]),
@@ -154,14 +166,33 @@ async def render(
     output_uri: str,
     *,
     voice: VoiceMode,
+    speaker: Speaker | None = None,
 ) -> None:
-    plan = plan_render(proposal, voice=voice)
+    clips: list[tuple[str, bytes, float]] | None = None
+    if voice == "ai" and speaker is not None:
+        clips = []
+        for block in proposal.script.blocks:
+            wav, duration = await _speak(speaker, block.text)
+            clips.append((block.block_id, wav, duration))
+    audio_s = None if clips is None else {block_id: duration for block_id, _wav, duration in clips}
+    plan = plan_render(proposal, voice=voice, audio_s_by_block=audio_s)
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         mezz = work / "mezz.mp4"
         timeline = work / "timeline.wav"
         await storage.download_to(storage.mezz_uri(run.id), mezz)
-        if voice == "ai":
+        if clips is not None:
+            paths: list[Path] = []
+            for index, (block_id, wav, _duration) in enumerate(clips):
+                path = work / f"block-{index}.wav"
+                await asyncio.to_thread(path.write_bytes, wav)
+                # The block clip lands before final.mp4 so a retry overwrites a fixed key.
+                await storage.upload_file(
+                    _voice_uri(storage, run.id, proposal.version, block_id), path, "audio/wav"
+                )
+                paths.append(path)
+            await _concat_wavs(paths, timeline)
+        elif voice == "ai":
             await voice_stub(timeline, proposal.script.blocks)
         else:
             source = work / "audio.wav"
@@ -173,6 +204,50 @@ async def render(
         poster = work / "poster.jpg"
         await _poster(out, poster)
         await storage.upload_file(storage.output_poster_uri(run.id, proposal.version), poster, "image/jpeg")
+
+
+async def _speak(speaker: Speaker, text: str) -> tuple[bytes, float]:
+    error: ProviderError | None = None
+    for _attempt in range(_SPEAK_ATTEMPTS):
+        try:
+            return await asyncio.to_thread(speaker, text)
+        except ProviderError as exc:
+            if not exc.retryable:
+                raise
+            error = exc
+    assert error is not None
+    raise error
+
+
+def _voice_uri(storage: GcsStorage, run_id: UUID, version: int, block_id: str) -> str:
+    folder = storage.output_uri(run_id, version).removesuffix("final.mp4")
+    return f"{folder}voice/{block_id}.wav"
+
+
+async def _concat_wavs(paths: Sequence[Path], dst: Path) -> None:
+    if not paths:
+        await _silence(dst, 0.05)
+        return
+    args: list[str] = []
+    labels: list[str] = []
+    for index, path in enumerate(paths):
+        args.extend(["-i", str(path)])
+        labels.append(f"[{index}:a]")
+    graph = "".join(labels) + f"concat=n={len(paths)}:v=0:a=1[a]"
+    await _ffmpeg(
+        *args,
+        "-filter_complex",
+        graph,
+        "-map",
+        "[a]",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        str(dst),
+    )
 
 
 async def transcode(src: Path, mezz: Path, wav: Path, info: Probe) -> None:
@@ -412,7 +487,7 @@ def _read_frames(dest: Path) -> list[Sample]:
     ]
 
 
-def _duration(data: dict[str, Any], video: dict[str, Any]) -> float:
+async def _duration(path: Path, data: dict[str, Any], video: dict[str, Any]) -> float:
     candidates = ((data.get("format") or {}).get("duration"), video.get("duration"))
     for raw in candidates:
         if raw is None:
@@ -420,6 +495,26 @@ def _duration(data: dict[str, Any], video: dict[str, Any]) -> float:
         duration = float(raw)
         if duration > 0:
             return duration
+    # MediaRecorder webm has no duration element: read the last video packet's timestamp.
+    packets = await _exec(
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "packet=pts_time",
+        "-of",
+        "csv=p=0",
+        str(path),
+    )
+    for line in reversed(packets.decode().splitlines()):
+        try:
+            seconds = float(line.strip())
+        except ValueError:
+            continue
+        if seconds > 0:
+            return seconds
     raise RuntimeError("ffprobe returned no duration")
 
 

@@ -276,9 +276,9 @@ export function ReviewScreen({ id }: { id: string }) {
                     role="img"
                     aria-label="Timeline of kept, sped up, held and cut parts"
                   >
-                    {entries.map((e) => (
+                    {entries.map((e, i) => (
                       <div
-                        key={e.seg_id}
+                        key={`${e.seg_id}-${i}`}
                         title={`${spanLabel(e)} ${actionLabel(e)}`}
                         style={{ flexGrow: Math.max(entryLength(e), 0.5), flexBasis: 0 }}
                         className={BAR[e.action]}
@@ -304,13 +304,13 @@ export function ReviewScreen({ id }: { id: string }) {
                     <span className="text-sm text-muted">Flip any cut back to keep</span>
                   </div>
                   <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                    {proposal.edit_plan.entries.map((orig) => {
+                    {proposal.edit_plan.entries.map((orig, i) => {
                       const kept = orig.action === "cut" && draft.kept[orig.seg_id];
                       const action = kept ? "keep" : orig.action;
                       const flag = flaggedIds.has(orig.seg_id);
                       return (
                         <li
-                          key={orig.seg_id}
+                          key={`${orig.seg_id}-${i}`}
                           className={cx(
                             "flex flex-col gap-2 rounded-xl border bg-surface p-4",
                             flag ? "border-warning/40 bg-warning-soft" : "border-line",

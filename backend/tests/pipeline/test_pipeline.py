@@ -257,7 +257,8 @@ class _Broken(FixtureEngines):
             raise RuntimeError("model timed out")
         return await super().propose(run, pre)
 
-    async def render(self, run: Any, proposal: Any, output_uri: str) -> None:
+    async def render(self, run: Any, proposal: Any, output_uri: str, *, voice: str = "original") -> None:
+        del voice
         if self.where == "render":
             raise RuntimeError("ffmpeg exited 1")
         await super().render(run, proposal, output_uri)
@@ -396,6 +397,36 @@ async def test_relay_sets_sent_at_only_after_handle(
             if queues >= {"pre-cpu", "agent", "post-io"} and all(r["sent_at"] is not None for r in rows):
                 break
             await asyncio.sleep(0.05)
+
+
+async def test_relay_queue_filter_leaves_preprocess_unsent(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    """The Mac agent claims only ``agent``. A preprocess note stays unsent for the Docker worker."""
+    stop = asyncio.Event()
+    task = asyncio.create_task(
+        relay.run_in_process(stop, FixtureEngines(storage), storage, queues=("agent",))
+    )
+    try:
+        uid = await _signup(api)
+        run_id, _, _ = await _start_run(uid, "review", storage)
+        await asyncio.sleep(0.4)
+        assert (await _status(uid, run_id))["status"] == "queued"
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, TIMEOUT_S)
+
+    relay_url = get_settings().database_url_relay
+    assert relay_url
+    conn = await db.connect_as(relay_url, db.RELAY_ROLE)
+    try:
+        cur = await conn.execute(
+            "select sent_at from outbox where run_id = %s and queue = 'pre-cpu'", (run_id,)
+        )
+        row = await cur.fetchone()
+    finally:
+        await conn.close()
+    assert row is not None and row["sent_at"] is None
 
 
 @pytest.mark.parametrize(

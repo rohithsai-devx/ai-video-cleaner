@@ -26,6 +26,16 @@ def storage(request: pytest.FixtureRequest) -> GcsStorage:
     return s
 
 
+def test_download_bytes_reads_only_objects_in_its_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = b"jpeg-frame"
+    monkeypatch.setattr(gcs_module.storage.Blob, "download_as_bytes", lambda _blob: payload)
+    storage = GcsStorage(bucket="frames", emulator_host="localhost:4443")
+
+    assert storage.download_bytes("gs://frames/run/frame.jpg") == payload
+    with pytest.raises(ValueError):
+        storage.download_bytes("gs://other/run/frame.jpg")
+
+
 def test_layout_uris(storage: GcsStorage):
     video_id = uuid.uuid4()
     run_id = uuid.uuid4()

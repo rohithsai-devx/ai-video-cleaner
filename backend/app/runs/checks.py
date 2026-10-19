@@ -1,13 +1,32 @@
-"""The mechanical EDL check the API re-runs on every edit and before approval (renders must not break).
+"""Mechanical checks the review API re-runs on every edit and before approval.
 
-Only global limits live here (design: "EDL valid"); judgement calls stay with the agent.
+Judgement stays with the agent. Only global limits live here.
 """
 
-from app.contracts.pipeline import CheckResult, EditPlan, SegContext
+import re
+
+from app.contracts.enums import VoiceMode
+from app.contracts.pipeline import (
+    CheckResult,
+    EditPlan,
+    EDLEntry,
+    Script,
+    ScriptBlock,
+    SegContext,
+    Segment,
+    TranscriptContext,
+    Word,
+)
 
 EDL_VALID = "edl_valid"
 MAX_SPEED = 2.0
 MIN_DUR = 0.3
+# Stand-in until a measured voice rate is stored. 2.0 keeps the review fixture inside its targets.
+VOICE_WPS = 2.0
+_DUR_TOL = 0.5
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_URL = re.compile(r"https?://\S+|www\.\S+")
+_QUOTE = re.compile(r'"([^"]+)"')
 
 
 def edl_valid(plan: EditPlan, seg_contexts: list[SegContext], duration_s: float | None) -> CheckResult:
@@ -40,9 +59,161 @@ def edl_valid(plan: EditPlan, seg_contexts: list[SegContext], duration_s: float 
     )
 
 
+def length_fit(script: Script, voice_wps: float) -> CheckResult:
+    problems: list[str] = []
+    ref: str | None = None
+    # Speech is quantized to whole words (steps of 1/voice_wps), so a band finer than half a step
+    # cannot be hit by any text; a single-value target (10.777..10.777) is checked with that slack.
+    tolerance = 0.5 / voice_wps
+    for block in script.blocks:
+        duration = len(block.text.split()) / voice_wps
+        if duration < block.target_min - tolerance or duration > block.target_max + tolerance:
+            ref = ref or block.block_id
+            problems.append(f"{block.block_id}: {duration}s outside {block.target_min}..{block.target_max}")
+    return _script("length_fit", problems, ref)
+
+
+def glossary_kept(script: Script, glossary: list[str], words: list[Word]) -> CheckResult:
+    problems: list[str] = []
+    ref: str | None = None
+    for block in script.blocks:
+        spoken = _span_text(words, block.source_span)
+        missing = [term for term in glossary if _has_term(term, spoken) and not _has_term(term, block.text)]
+        if missing:
+            ref = ref or block.block_id
+            problems.append(f"{block.block_id}: missing {', '.join(missing)}")
+    return _script("glossary_kept", problems, ref)
+
+
+def coverage_order(script: Script, segments: list[Segment]) -> CheckResult:
+    problems: list[str] = []
+    ref: str | None = None
+    used: dict[str, int] = {}
+    for block in script.blocks:
+        for seg_id in set(block.seg_ids):
+            used[seg_id] = used.get(seg_id, 0) + 1
+    for seg in segments:
+        if seg.active and used.get(seg.seg_id, 0) == 0:
+            ref = ref or seg.seg_id
+            problems.append(f"{seg.seg_id}: active segment unused")
+    for seg_id, count in used.items():
+        if count > 1:
+            ref = ref or seg_id
+            problems.append(f"{seg_id}: in two blocks")
+    prev: float | None = None
+    for block in script.blocks:
+        start = block.source_span[0]
+        if prev is not None and start < prev:
+            ref = ref or block.block_id
+            problems.append(f"{block.block_id}: out of source order")
+        prev = start
+    return _script("coverage_order", problems, ref)
+
+
+def nothing_invented(script: Script, words: list[Word], seg_contexts: list[SegContext]) -> CheckResult:
+    problems: list[str] = []
+    ref: str | None = None
+    contexts = {s.seg_id: s for s in seg_contexts}
+    for block in script.blocks:
+        transcript = _span_text(words, block.source_span)
+        screen_parts: list[str] = []
+        for seg_id in block.seg_ids:
+            ctx = contexts.get(seg_id)
+            if ctx is not None:
+                screen_parts.extend(ctx.screen_text)
+        screen = "\n".join(screen_parts)
+        invented = [token for token in _claims(block.text) if token not in transcript and token not in screen]
+        if invented:
+            ref = ref or block.block_id
+            problems.append(f"{block.block_id}: invented {', '.join(invented)}")
+    return _script("nothing_invented", problems, ref)
+
+
+def clean_only(script: Script, words: list[Word], voice: VoiceMode) -> CheckResult:
+    if voice == "ai":
+        return _script("clean_only", [], None)
+    source = {token.casefold() for word in words for token in word.w.split()}
+    problems: list[str] = []
+    ref: str | None = None
+    for block in script.blocks:
+        missing = [token for token in block.text.split() if token.casefold() not in source]
+        if missing:
+            ref = ref or block.block_id
+            problems.append(f"{block.block_id}: {', '.join(missing)} not in the source transcript")
+    return _script("clean_only", problems, ref)
+
+
+def edl_covers_script(script: Script, plan: EditPlan) -> CheckResult:
+    problems: list[str] = []
+    ref: str | None = None
+    entries: dict[str, list[EDLEntry]] = {}
+    for entry in plan.entries:
+        entries.setdefault(entry.seg_id, []).append(entry)
+    for block in script.blocks:
+        edited = _edited(block, entries)
+        if edited is None or abs(edited - block.est_dur) > _DUR_TOL:
+            ref = ref or block.block_id
+            shown = "unknown" if edited is None else edited
+            problems.append(f"{block.block_id}: edited {shown}s vs estimated {block.est_dur}s")
+    return CheckResult(
+        name="edl_covers_script",
+        passed=not problems,
+        target="video_editor",
+        message="; ".join(problems),
+        ref_id=ref,
+    )
+
+
 def recheck(
-    previous: list[CheckResult], plan: EditPlan, seg_contexts: list[SegContext], duration_s: float | None
+    script: Script,
+    plan: EditPlan,
+    seg_contexts: list[SegContext],
+    transcript: TranscriptContext,
+    words: list[Word],
+    segments: list[Segment],
+    duration_s: float | None,
+    voice: VoiceMode,
+    voice_wps: float,
 ) -> list[CheckResult]:
-    """Keep the agent's script checks, replace edit-plan checks with a fresh EDL check."""
-    kept = [c for c in previous if c.target != "video_editor"]
-    return [*kept, edl_valid(plan, seg_contexts, duration_s)]
+    """Recompute every check from the current proposal. Stale script checks are not kept."""
+    return [
+        length_fit(script, voice_wps),
+        glossary_kept(script, transcript.glossary, words),
+        coverage_order(script, segments),
+        nothing_invented(script, words, seg_contexts),
+        clean_only(script, words, voice),
+        edl_valid(plan, seg_contexts, duration_s),
+        edl_covers_script(script, plan),
+    ]
+
+
+def _script(name: str, problems: list[str], ref: str | None) -> CheckResult:
+    return CheckResult(
+        name=name, passed=not problems, target="script_writer", message="; ".join(problems), ref_id=ref
+    )
+
+
+def _span_text(words: list[Word], span: tuple[float, float]) -> str:
+    start, end = span
+    return " ".join(word.w for word in words if start <= word.start < end)
+
+
+def _has_term(term: str, text: str) -> bool:
+    return re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE).search(text) is not None
+
+
+def _claims(text: str) -> list[str]:
+    return [*_NUMBER.findall(text), *_URL.findall(text), *_QUOTE.findall(text)]
+
+
+def _edited(block: ScriptBlock, entries: dict[str, list[EDLEntry]]) -> float | None:
+    total = 0.0
+    for seg_id in dict.fromkeys(block.seg_ids):
+        for entry in entries.get(seg_id, []):
+            if entry.action == "cut":
+                continue
+            if entry.speed <= 0:
+                return None
+            start, end = entry.src
+            total += (end - start) / entry.speed + entry.freeze_s
+    return total

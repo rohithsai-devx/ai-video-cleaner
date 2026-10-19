@@ -1,14 +1,19 @@
 """ffmpeg preprocess and render. The 900s guard is a number. ffmpeg cases skip when the binary is absent."""
 
 import asyncio
+import io
+import math
+import re
 import shutil
-from os import fspath
+import wave
+from os import PathLike, fspath
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
 
+from app.agent.state import Bundle
 from app.contracts.pipeline import (
     Drop,
     EditPlan,
@@ -22,10 +27,12 @@ from app.contracts.pipeline import (
     TranscriptContext,
 )
 from app.pipeline import media
-from app.pipeline.media import Probe, RecordingTooLong, _scene_scores, guard_duration, plan_render
+from app.pipeline.media import Probe, RecordingTooLong, _duration, _scene_scores, guard_duration, plan_render
 from app.pipeline.media_engines import MediaEngines
 from app.pipeline.proposal_stub import stub_proposal
 from app.pipeline.words import stub_words
+from app.providers.bundle import Clip
+from app.providers.errors import ProviderError
 from app.runs.lifecycle import RunRef
 from app.shared.config import MAX_RECORDING_SECONDS
 from app.shared.storage import GcsStorage
@@ -157,6 +164,15 @@ def test_ai_voice_does_not_speed_an_uncuttable_span() -> None:
     assert plan.entries[0].freeze_s == 0
 
 
+def test_ai_voice_fits_the_spoken_duration() -> None:
+    proposal = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=2)
+    plan = plan_render(proposal, voice="ai", audio_s_by_block={"b1": 0.5})
+    assert plan.narration is True
+    assert plan.audio_seconds == 0.5
+    assert plan.entries[0].src == (0.0, 0.5)
+    assert plan.entries[0].speed == 1
+
+
 def test_original_voice_speeds_when_the_span_cannot_be_cut() -> None:
     proposal = _blocks(duration=4, cuttable=False, min_dur=4, est_dur=4, drops=[(2.0, 4.0)])
     plan = plan_render(proposal, voice="original")
@@ -207,6 +223,74 @@ async def test_duration_at_the_cap_reaches_transcode(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(media, "transcode", fake_transcode)
     with pytest.raises(RuntimeError, match="stop"):
         await MediaEngines(_Seed()).preprocess(_RUN, "gs://b/videos/x/raw.webm")
+
+
+async def test_duration_prefers_the_header_and_never_scans_packets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("packet scan ran")
+
+    monkeypatch.setattr(media, "_exec", fail)
+    assert await _duration(Path("raw"), {"format": {"duration": "12.5"}}, {"duration": None}) == 12.5
+    assert await _duration(Path("raw"), {}, {"duration": "11"}) == 11
+
+
+async def test_duration_falls_back_to_the_last_video_packet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    async def scan(*args: object, **_kwargs: object) -> bytes:
+        calls.append(args)
+        return b"0.000000\n\n0.500000\n2.000000\n"
+
+    monkeypatch.setattr(media, "_exec", scan)
+    assert await _duration(Path("raw"), {}, {"duration": None}) == 2.0
+    assert len(calls) == 1 and "packet=pts_time" in calls[0]
+
+    async def empty(*_args: object, **_kwargs: object) -> bytes:
+        return b""
+
+    monkeypatch.setattr(media, "_exec", empty)
+    with pytest.raises(RuntimeError, match="no duration"):
+        await _duration(Path("raw"), {}, {})
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg is not on PATH")
+async def test_probe_reads_packets_when_the_webm_header_has_no_duration(tmp_path: Path) -> None:
+    # A non-seekable webm (what MediaRecorder produces) carries no duration element.
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=160x120:r=10:d=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=16000:duration=2",
+        "-c:v",
+        "libvpx",
+        "-c:a",
+        "libopus",
+        "-f",
+        "webm",
+        "pipe:1",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    data, err = await proc.communicate()
+    assert proc.returncode == 0, err.decode(errors="replace")[-2000:]
+    await asyncio.to_thread(_write, tmp_path / "raw.webm", data)
+    info = await media.probe(tmp_path / "raw.webm")
+    assert info.duration == pytest.approx(2, abs=0.2)
+    assert info.codec == "vp8"
+    assert (info.width, info.height) == (160, 120)
+    assert info.has_audio
 
 
 class _Disk(GcsStorage):
@@ -475,3 +559,233 @@ def _blocks(
         checks=[],
         flags=[],
     )
+
+
+def _two_blocks() -> Proposal:
+    base = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=2, parts=2)
+    first, second = base.edit_plan.entries
+    sample = base.script.blocks[0]
+    return base.model_copy(
+        update={
+            "script": Script(
+                blocks=[
+                    sample.model_copy(update={"block_id": "b1", "text": "alpha", "seg_ids": ["seg_01"]}),
+                    sample.model_copy(update={"block_id": "b2", "text": "beta", "seg_ids": ["seg_02"]}),
+                ]
+            ),
+            "edit_plan": EditPlan(
+                entries=[
+                    first.model_copy(update={"block_id": "b1"}),
+                    second.model_copy(update={"block_id": "b2"}),
+                ]
+            ),
+        }
+    )
+
+
+class _Mem(GcsStorage):
+    def __init__(self) -> None:
+        super().__init__(bucket="b", emulator_host="localhost:9")
+        self.objects: dict[str, bytes] = {}
+        self.uploads: list[str] = []
+
+    async def download_to(self, uri: str, path: str | PathLike[str]) -> None:
+        payload = self.objects[uri]
+        await asyncio.to_thread(Path(path).write_bytes, payload)
+
+    async def upload_file(self, uri: str, path: str | PathLike[str], content_type: str) -> None:
+        del content_type
+        payload = await asyncio.to_thread(Path(path).read_bytes)
+        self.objects[uri] = payload
+        self.uploads.append(uri)
+
+
+def _quiet_render(monkeypatch: pytest.MonkeyPatch, seen: dict[str, Any]) -> None:
+    async def encode(mezz: Path, audio: Path, entries: list[Any], out: Path) -> None:
+        del mezz, audio
+        seen["entries"] = entries
+        await asyncio.to_thread(out.write_bytes, b"mp4")
+
+    async def poster(video: Path, dest: Path) -> None:
+        del video
+        await asyncio.to_thread(dest.write_bytes, b"\xff\xd8")
+
+    async def concat(paths: list[Path], dst: Path) -> None:
+        del paths
+        await asyncio.to_thread(dst.write_bytes, b"wav")
+
+    async def cut(src: Path, dst: Path, drops: list[Any]) -> None:
+        del src
+        seen["drops"] = drops
+        await asyncio.to_thread(dst.write_bytes, b"cut")
+
+    monkeypatch.setattr(media, "_encode", encode)
+    monkeypatch.setattr(media, "_poster", poster)
+    monkeypatch.setattr(media, "_concat_wavs", concat)
+    monkeypatch.setattr(media, "cut_drops", cut)
+
+
+class _Clips:
+    def __init__(self, clips: dict[str, tuple[bytes, float]]) -> None:
+        self.clips = clips
+        self.texts: list[str] = []
+        self.voice_id: str | None = None
+        self.pronunciations: dict[str, str] | None = None
+        self.stage: str | None = None
+
+    def synthesize(self, call: Any, text: str, voice_id: str, pronunciations: dict[str, str]) -> Clip:
+        self.texts.append(text)
+        self.voice_id = voice_id
+        self.pronunciations = pronunciations
+        self.stage = call.stage
+        wav, duration = self.clips[text]
+        return Clip(audio=wav, duration_s=duration)
+
+
+class _Fails:
+    def __init__(self, *, times: int, retryable: bool, then: tuple[bytes, float] | None = None) -> None:
+        self.times = times
+        self.retryable = retryable
+        self.then = then
+        self.calls = 0
+
+    def synthesize(self, call: Any, text: str, voice_id: str, pronunciations: dict[str, str]) -> Clip:
+        del call, text, voice_id, pronunciations
+        self.calls += 1
+        if self.calls <= self.times:
+            raise ProviderError("busy", retryable=self.retryable)
+        assert self.then is not None
+        wav, duration = self.then
+        return Clip(audio=wav, duration_s=duration)
+
+
+def _engines(storage: GcsStorage, bundle: object) -> MediaEngines:
+    return MediaEngines(storage, bundle=cast(Bundle, bundle))
+
+
+async def test_ai_render_writes_each_block_and_fits_its_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+    _quiet_render(monkeypatch, seen)
+    storage = _Mem()
+    storage.objects[storage.mezz_uri(_RUN.id)] = b"mezz"
+    speech = _Clips({"alpha": (b"wav-alpha", 0.4), "beta": (b"wav-beta", 1.25)})
+    proposal = _two_blocks()
+    uri = storage.output_uri(_RUN.id, proposal.version)
+    await _engines(storage, speech).render(_RUN, proposal, uri, voice="ai")
+    b1 = f"gs://b/runs/{_RUN.id}/post/v1/voice/b1.wav"
+    b2 = f"gs://b/runs/{_RUN.id}/post/v1/voice/b2.wav"
+    assert speech.texts == ["alpha", "beta"]
+    assert speech.stage == "voice"
+    assert speech.voice_id == ""
+    assert speech.pronunciations == {}
+    assert storage.objects[b1] == b"wav-alpha"
+    assert storage.objects[b2] == b"wav-beta"
+    assert storage.uploads.index(b1) < storage.uploads.index(uri)
+    assert storage.uploads.index(b2) < storage.uploads.index(uri)
+    assert [(entry.src, entry.speed) for entry in seen["entries"]] == [((0.0, 0.4), 1.0), ((2.0, 3.25), 1.0)]
+
+
+async def test_retryable_speech_error_is_tried_three_times() -> None:
+    speech = _Fails(times=3, retryable=True)
+    storage = _Mem()
+    proposal = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=2)
+    with pytest.raises(ProviderError, match="busy"):
+        await _engines(storage, speech).render(_RUN, proposal, storage.output_uri(_RUN.id, 1), voice="ai")
+    assert speech.calls == 3
+    assert storage.uploads == []
+
+
+async def test_speech_recovers_on_the_third_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    _quiet_render(monkeypatch, {})
+    storage = _Mem()
+    storage.objects[storage.mezz_uri(_RUN.id)] = b"mezz"
+    speech = _Fails(times=2, retryable=True, then=(b"wav-ok", 0.5))
+    proposal = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=2)
+    uri = storage.output_uri(_RUN.id, proposal.version)
+    await _engines(storage, speech).render(_RUN, proposal, uri, voice="ai")
+    assert speech.calls == 3
+    voice = f"gs://b/runs/{_RUN.id}/post/v1/voice/b1.wav"
+    assert storage.objects[voice] == b"wav-ok"
+    assert storage.uploads.index(voice) < storage.uploads.index(uri)
+
+
+async def test_terminal_speech_error_is_not_retried() -> None:
+    speech = _Fails(times=1, retryable=False)
+    storage = _Mem()
+    proposal = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=2)
+    with pytest.raises(ProviderError, match="busy"):
+        await _engines(storage, speech).render(_RUN, proposal, storage.output_uri(_RUN.id, 1), voice="ai")
+    assert speech.calls == 1
+    assert storage.uploads == []
+
+
+async def test_original_voice_cuts_the_wav_and_does_not_speak(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+    _quiet_render(monkeypatch, seen)
+    storage = _Mem()
+    storage.objects[storage.mezz_uri(_RUN.id)] = b"mezz"
+    storage.objects[storage.audio_uri(_RUN.id)] = b"audio"
+    speech = _Fails(times=1, retryable=False)
+    proposal = _blocks(duration=4, cuttable=True, min_dur=0.3, est_dur=4, drops=[(1.0, 2.0)])
+    uri = storage.output_uri(_RUN.id, proposal.version)
+    await _engines(storage, speech).render(_RUN, proposal, uri, voice="original")
+    assert speech.calls == 0
+    assert seen["drops"][0].span == (1.0, 2.0)
+    assert not any("/voice/" in item for item in storage.uploads)
+    assert uri in storage.uploads
+
+
+def _tone(seconds: float) -> bytes:
+    buf = io.BytesIO()
+    rate = 16000
+    count = int(rate * seconds)
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        frames = bytearray()
+        for index in range(count):
+            sample = int(12000 * math.sin(2 * math.pi * 440 * index / rate))
+            frames += sample.to_bytes(2, "little", signed=True)
+        handle.writeframes(frames)
+    return buf.getvalue()
+
+
+async def _mean_volume(path: Path) -> float:
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-hide_banner",
+        "-i",
+        str(path),
+        "-af",
+        "volumedetect",
+        "-f",
+        "null",
+        "-",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _out, err = await proc.communicate()
+    text = err.decode(errors="replace")
+    assert proc.returncode == 0, text[-500:]
+    match = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?) dB", text)
+    assert match is not None, text[-500:]
+    return float(match.group(1))
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg is not on PATH")
+async def test_ai_voice_muxes_the_spoken_clip(
+    preprocessed: tuple[MediaEngines, _Disk, RunRef, PreprocessResult],
+) -> None:
+    _engines_stub, storage, run, pre = preprocessed
+    tone = _tone(0.5)
+    speech = _Clips({"word": (tone, 0.5)})
+    proposal = _blocks(duration=pre.duration, cuttable=True, min_dur=0.3, est_dur=pre.duration)
+    uri = storage.output_uri(run.id, proposal.version)
+    await _engines(storage, speech).render(run, proposal, uri, voice="ai")
+    info = await media.probe(storage._local(uri))
+    assert info.duration == pytest.approx(0.5, abs=0.35)
+    assert await _mean_volume(storage._local(uri)) > -30
+    voice_uri = next(item for item in storage.uploads if item.endswith("/voice/b1.wav"))
+    assert storage.uploads.index(voice_uri) < storage.uploads.index(uri)
+    assert await asyncio.to_thread(storage._local(voice_uri).read_bytes) == tone

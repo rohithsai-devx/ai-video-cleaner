@@ -33,18 +33,20 @@ services:
       - ./backend:/app
       - worker-venv:/app/.venv # the image syncs its own env; do not replace backend/.venv on the Mac
     working_dir: /app
+    # Shares fake-gcs's netns: its resumable session URLs advertise localhost:4443, which must
+    # stay the browser-facing host, so the worker must see that same loopback.
+    network_mode: "service:gcs"
     command: uv run python -m app.pipeline.worker
     depends_on: [postgres, gcs]
     environment:
       DATABASE_URL_WORKER: postgresql://app_worker:app_worker_dev@host.docker.internal:54329/avc
       DATABASE_URL_RELAY: postgresql://app_relay:app_relay_dev@host.docker.internal:54329/avc
       DATABASE_URL_API: postgresql://app_api:app_api_dev@host.docker.internal:54329/avc
-      STORAGE_EMULATOR_HOST: http://host.docker.internal:4443
+      STORAGE_EMULATOR_HOST: http://localhost:4443
       GCS_BUCKET: avc-local
       REDIS_URL: redis://host.docker.internal:63799/0
       JWT_SECRET: local-dev-only-secret-change-me-0123456789
       FRONTEND_BASE_URL: http://localhost:3000
-    extra_hosts: ["host.docker.internal:host-gateway"]
 
 volumes:
   worker-venv:

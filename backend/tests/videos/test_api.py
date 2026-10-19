@@ -147,7 +147,8 @@ async def test_proposal_edit_and_approve(
     assert "gs://" not in r.text
 
     p = view["proposal"]
-    p["script"]["blocks"][0]["text"] = "Edited opening line."
+    # Same words as the source, minus the greeting, so length and clean-only still pass.
+    p["script"]["blocks"][0]["text"] = "today I'll show you how to export the quarterly report."
     update = {
         "base_version": p["version"],
         "script": p["script"],

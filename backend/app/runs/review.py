@@ -11,8 +11,18 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
-from app.contracts.pipeline import CheckResult, EditPlan, Proposal, Script, SegContext, TranscriptContext
-from app.runs.checks import edl_valid, recheck
+from app.contracts.enums import VoiceMode
+from app.contracts.pipeline import (
+    CheckResult,
+    EditPlan,
+    Proposal,
+    Script,
+    SegContext,
+    Segment,
+    TranscriptContext,
+    Word,
+)
+from app.runs.checks import VOICE_WPS, recheck
 from app.runs.exceptions import EditNotAllowed as EditNotAllowed
 from app.runs.exceptions import InvalidEdl as InvalidEdl
 from app.runs.exceptions import NoProposal as NoProposal
@@ -138,6 +148,20 @@ def _review_edits(old: Proposal, new: ProposalUpdate) -> list[tuple[str, str, An
     return edits
 
 
+async def _check_inputs(conn: Conn, run: RunRef) -> tuple[VoiceMode, list[Word], list[Segment]]:
+    """Voice and the preprocess words and segments the mechanical checks read."""
+    cur = await conn.execute("select voice, pre from runs where id = %s", (run.id,))
+    row = await cur.fetchone()
+    assert row is not None
+    pre = row["pre"] or {}
+    voice: VoiceMode = row["voice"]
+    return (
+        voice,
+        [Word.model_validate(w) for w in pre.get("words") or []],
+        [Segment.model_validate(s) for s in pre.get("segments") or []],
+    )
+
+
 def _check_base(base_version: int | None, latest_: Proposal) -> None:
     """Compare-and-set on the version. Safe without a race window: the caller holds the run row lock."""
     if base_version is not None and base_version != latest_.version:
@@ -154,8 +178,18 @@ async def save_edit(conn: Conn, run: RunRef, update: ProposalUpdate) -> Proposal
     _, old = found
     _check_base(update.base_version, old)
     _check_trust(old, update)
-    # the EDL check always uses the stored seg_contexts
-    checks = recheck(old.checks, update.edit_plan, old.seg_contexts, run.duration_s)
+    voice, words, segments = await _check_inputs(conn, run)
+    checks = recheck(
+        update.script,
+        update.edit_plan,
+        update.seg_contexts,
+        old.transcript_ctx,
+        words,
+        segments,
+        run.duration_s,
+        voice,
+        VOICE_WPS,
+    )
     new = old.model_copy(
         update={
             "version": old.version + 1,  # safe: the run row is locked
@@ -195,7 +229,7 @@ async def save_edit(conn: Conn, run: RunRef, update: ProposalUpdate) -> Proposal
 
 
 async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> list[Event]:
-    """EDL-check the latest version, record the approval, advance to approved (enqueues post-io).
+    """Re-check the latest version, record the approval, advance to approved (enqueues post-io).
 
     With ``base_version``, the latest version must be that one. The run must be locked.
     """
@@ -206,9 +240,27 @@ async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> l
         raise NoProposal("run has no proposal yet")
     pid, proposal = found
     _check_base(base_version, proposal)
-    check = edl_valid(proposal.edit_plan, proposal.seg_contexts, run.duration_s)
-    if not check.passed:
-        raise InvalidEdl(check)
+    voice, words, segments = await _check_inputs(conn, run)
+    failed = next(
+        (
+            c
+            for c in recheck(
+                proposal.script,
+                proposal.edit_plan,
+                proposal.seg_contexts,
+                proposal.transcript_ctx,
+                words,
+                segments,
+                run.duration_s,
+                voice,
+                VOICE_WPS,
+            )
+            if not c.passed
+        ),
+        None,
+    )
+    if failed is not None:
+        raise InvalidEdl(failed)
     await conn.execute(
         "update proposals set approved_by = app.uid(), approved_at = now() where id = %s", (pid,)
     )

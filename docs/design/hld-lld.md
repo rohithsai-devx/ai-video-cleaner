@@ -1009,59 +1009,36 @@ Each provider adapter declares `Limits(rps, max_concurrency)`. A Redis token buc
 
 ## LLD: provider factory
 
-Each stage depends on an interface defined by what the pipeline needs, never on a vendor SDK. Adapters translate vendors to that interface, a registry maps config names to adapters, and the factory builds a `Providers` bundle that is passed to the graph as runtime context. v1 ships **one adapter per stage**; a second one is written only when you actually switch.
+One module, `providers/`, owns every model call. The graph and the pipeline see a `Providers` bundle built from env. They never see a vendor SDK. The build split is in [../plan/phase3b.md](../plan/phase3b.md).
+
+Each method names its plugin in env. v1 is OpenAI `gpt-6-luna` for the LLM, a VLM behind an OpenAI-compatible endpoint (`GEMMA_BASE_URL`, `GEMMA_MODEL`, and either `GEMMA_API_KEY` or a separate Modal proxy-token pair), Laya on MLX for `yes_no`, and OpenAI `gpt-4o-mini-tts-2025-12-15` for TTS until an ElevenLabs key exists. OpenAI credentials are never sent to Gemma. Stub words stay for STT until that same ElevenLabs key exists. Jev is a later plugin on `yes_no`. Anthropic is a later plugin on `complete`. The critique prompt is built in the orchestrator; the client does not import `AgentState`.
+
+Chat plugins share one HTTP implementation. The body is the branch: `openai` (`POST {base_url}/chat/completions`, which also covers Gemma) and `anthropic` (Messages). OpenAI and the VLM use separate bearer credentials; Modal's token ID and secret are joined only for the VLM request. Before a Gemma request, the provider reads each `gs://` keyframe through the storage adapter and embeds the JPEG as a data URL; image bytes stay out of graph state and checkpoints. Laya loads with `laya-mlx` inside the Mac process that runs the agent (`aac6fef/laya-typed-decisions-mlx`). The Docker ffmpeg worker never imports it. A new host that speaks an existing body is config. A new body is a new plugin behind the same method.
+
+Transcribe and TTS are separate methods in the same package, because they move audio rather than chat. `transcribe` must return word timestamps; a text-only server does alignment inside the method. `synthesize` returns audio, duration, and word timings. A second body (for example ElevenLabs) is added inside that method when it is chosen.
 
 ```python
 class Limits(BaseModel):
-    rps: float; max_concurrency: int; max_input: int | None = None   # e.g. max audio seconds
-
-class Transcriber(Protocol):
-    limits: Limits
-    def transcribe(self, audio_uri: str, lang: str | None = None) -> list[Word]: ...   # MUST return word timestamps
-
-class VisionDescriber(Protocol):
-    limits: Limits
-    def describe(self, frame_uris: list[str], transcript: str, hints: dict) -> SegContext: ...
-
-class LLM(Protocol):
-    limits: Limits
-    def structured(self, prompt: str, schema: type[T], tools: list | None = None) -> T: ...
-    def critique(self, target: str, state: AgentState) -> str: ...
+    rps: float; max_concurrency: int; max_input: int | None = None
 
 class Decision(BaseModel):  p_yes: float; raw: dict = {}
-class Decider(Protocol):
-    limits: Limits
-    def yes_no(self, question: str, ctx: str) -> Decision: ...
-
 class Audio(BaseModel):     uri: str; dur: float; alignment_uri: str | None
-class TTS(Protocol):
-    limits: Limits
-    words_per_second: float                                           # measured once per voice
+
+class Providers(Protocol):
+    def complete(self, messages: list, schema: type[T]) -> T: ...   # llm plugin
+    def describe(self, frame_uris: list[str], transcript: str, hints: dict) -> SegContext: ...
+    def yes_no(self, question: str, ctx: str) -> Decision: ...
+    def transcribe(self, audio_uri: str, lang: str | None = None) -> list[Word]: ...
     def synthesize(self, text: str, voice_id: str, pronunciations: dict[str, str]) -> Audio: ...
 
-@dataclass
-class Providers:
-    transcriber: Transcriber; vlm: VisionDescriber; llm: LLM; decider: Decider; tts: TTS
-
-REGISTRY: dict[str, dict[str, type]] = {
-    "transcriber": {"google_stt": GoogleSTT, "whisper_self": WhisperSelfHosted},
-    "vlm":         {"gemma4_self": Gemma4SelfHosted, "gemini": GeminiVLM},
-    "llm":         {"gemini": GeminiLLM, "claude": ClaudeLLM},
-    "decider":     {"jev": JevDecider, "laya_self": LayaSelfHosted, "openai_decisions": OpenAIDecisions},
-    "tts":         {"elevenlabs": ElevenLabsTTS},
-}
-
-def build_providers(cfg: ProviderConfig) -> Providers:   # cfg from env, optionally overridden per workspace
-    return Providers(**{stage: REGISTRY[stage][c.name](**c.options) for stage, c in cfg})
+def build(settings) -> Providers: ...   # env: CHAT_WIRE, CHAT_BASE_URL, CHAT_*_MODEL, keys
 ```
 
-**Adapter rules:**
+**Rules:**
 
-- An adapter that can't meet the contract is not pluggable. Example: an STT provider without word timestamps needs a forced-alignment step inside its adapter.
-- Adapters log every call to `provider_calls` (units, cost, latency, ok).
-- Adapters never retry or rate-limit on their own. The worker's Redis limiter and the node's `RetryPolicy` do that, using the adapter's declared `Limits`.
-
-The registry names above are candidates from the brainstorm. Each is unverified until checked (see Open questions).
+- A server that cannot meet the method's return value is not pluggable until the gap is filled inside the method.
+- Every call logs itself to `provider_calls` (units, cost, latency, ok). `provider` is the wire name; `model` is the model id.
+- The client never retries and never rate-limits. One worker honours `Limits` with a semaphore. The Redis token bucket is the multi-worker version (phase 4). `RetryPolicy` on the node handles `ProviderError(retryable=True)` (429, 5xx, timeout).
 
 ## Open questions and next steps
 
@@ -1096,11 +1073,11 @@ Twelve facts were checked against primary docs, and four of them also by running
 - [ ] Auth provider beyond phase 1's email + password (Google Workspace SSO next?)
 - [x] SSE auth for the browser: the Next.js same-origin proxy adds the bearer header from an httpOnly cookie, so native `EventSource` works (phase 2)
 - [ ] Pricing unit (AI minutes per month, as Trupeer uses) and quotas
-- [ ] Which providers v1 starts with, per stage
+- [ ] Which model ids and base URL v1 uses for the three chat roles, and which TTS body. The wire (`openai` or `anthropic`) is config; see [../plan/phase3b.md](../plan/phase3b.md)
 
 ### Next steps
 
-The build order is in [../plan/phases.md](../plan/phases.md). Phase 3 is split: 3a builds the code in pre and post and stubs `transcribe` and TTS; 3b adds the provider factory and the agent. Detailed research notes are in [../research/findings-2026-10-17.md](../research/findings-2026-10-17.md).
+The build order is in [../plan/phases.md](../plan/phases.md). Phase 3 is split: 3a builds the code in pre and post and stubs `transcribe` and TTS ([phase3a-architecture.md](phase3a-architecture.md)); 3b adds the model client and the agent ([../plan/phase3b.md](../plan/phase3b.md)). Detailed research notes are in [../research/findings-2026-10-17.md](../research/findings-2026-10-17.md).
 
 ### Sources
 

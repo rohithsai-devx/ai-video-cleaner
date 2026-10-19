@@ -12,7 +12,7 @@
         "source_span": [0.0, 12.4],
         "target_min": 4.0,
         "target_max": 14.0,
-        "est_dur": 4.4
+        "est_dur": 12.4
       },
       {
         "block_id": "b2",
@@ -21,7 +21,7 @@
         "source_span": [18.0, 41.5],
         "target_min": 10.0,
         "target_max": 30.0,
-        "est_dur": 10.4
+        "est_dur": 23.5
       },
       {
         "block_id": "b3",
@@ -30,7 +30,7 @@
         "source_span": [46.2, 52.0],
         "target_min": 4.0,
         "target_max": 10.0,
-        "est_dur": 3.8
+        "est_dur": 5.8
       },
       {
         "block_id": "b4",
@@ -39,7 +39,7 @@
         "source_span": [52.0, 60.0],
         "target_min": 4.0,
         "target_max": 10.0,
-        "est_dur": 4.6
+        "est_dur": 8.0
       }
     ]
   },

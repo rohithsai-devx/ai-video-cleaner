@@ -26,6 +26,37 @@ FIXTURE = json.loads(
 )
 
 
+def _align_estimates(fixture: dict[str, Any]) -> None:
+    """Keep est_dur within 0.5s of the kept edit so edl_covers_script accepts this fixture."""
+    entries = {e["seg_id"]: e for e in fixture["edit_plan"]["entries"]}
+    for block in fixture["script"]["blocks"]:
+        edited = 0.0
+        for seg_id in block["seg_ids"]:
+            entry = entries[seg_id]
+            if entry["action"] == "cut":
+                continue
+            start, end = entry["src"]
+            edited += (end - start) / entry["speed"] + entry["freeze_s"]
+        block["est_dur"] = edited
+
+
+def _transcript(script: dict[str, Any]) -> list[dict[str, float | str]]:
+    """One timed token per block word, inside that block's source span."""
+    words: list[dict[str, float | str]] = []
+    for block in script["blocks"]:
+        start, end = block["source_span"]
+        tokens = block["text"].split()
+        if not tokens:
+            continue
+        step = (end - start) / len(tokens)
+        for i, token in enumerate(tokens):
+            words.append({"w": token, "start": start + i * step, "end": start + (i + 1) * step})
+    return words
+
+
+_align_estimates(FIXTURE)
+
+
 PASSWORD = "correct horse battery"
 
 
@@ -118,7 +149,11 @@ async def _run_awaiting_review(
     r = await c.post(f"/videos/{video['id']}/runs", json={"mode": "review", "voice": "original"}, headers=h)
     assert r.status_code == 202, r.text
     run_id = r.json()["run_id"]
-    pre = {"duration": 62.0, "keyframes": [{"frame_id": "f1", "t": 1.0, "uri": "gs://b/runs/x/f1.jpg"}]}
+    pre = {
+        "duration": 62.0,
+        "keyframes": [{"frame_id": "f1", "t": 1.0, "uri": "gs://b/runs/x/f1.jpg"}],
+        "words": _transcript(FIXTURE["script"]),
+    }
     storage.objects.add("gs://b/runs/x/f1.jpg")
     async with worker_tx(video["workspace_id"]) as w:
         for old, new in [("queued", "preprocessing"), ("preprocessing", "agent_running")]:

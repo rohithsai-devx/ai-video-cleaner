@@ -4,8 +4,8 @@
 those locks across ``handle``, then sets ``sent_at`` and unlocks. A killed process drops the lock with
 ``sent_at`` still null, so the next poll redelivers. ``handle`` is idempotent from the in-progress status.
 
-``run_in_process`` is the local stand-in for Cloud Tasks. Phase 3 adds an HTTP handler that calls the same
-``handle`` for each delivered task.
+``run_in_process`` is the local stand-in for Cloud Tasks. Phase 4 adds the Cloud Tasks client and the HTTP
+handler that calls the same ``handle`` for each delivered task. See docs/design/phase3a-architecture.md.
 """
 
 import asyncio
@@ -35,14 +35,23 @@ class _Held:
     task: Task
 
 
-async def claim(relay: Conn, limit: int) -> list[_Held]:
-    """Lock unsent rows on this connection. Do not set ``sent_at``; the caller does that after handle."""
+async def claim(relay: Conn, limit: int, queues: tuple[str, ...] | None = None) -> list[_Held]:
+    """Lock unsent rows on this connection. Do not set ``sent_at``; the caller does that after handle.
+
+    ``queues`` limits which notes this process takes. None takes every queue. The Mac agent and the
+    Docker ffmpeg worker pass different queues so they do not take each other's jobs.
+    """
+    if queues is not None and len(queues) == 0:
+        return []
+    sql = "select id, workspace_id, run_id, queue, task_id from outbox where sent_at is null"
+    params: list[object] = []
+    if queues is not None:
+        sql += " and queue = any(%s)"
+        params.append(list(queues))
+    sql += " order by id limit %s for update skip locked"
+    params.append(limit)
     async with relay.transaction():
-        cur = await relay.execute(
-            "select id, workspace_id, run_id, queue, task_id from outbox where sent_at is null"
-            " order by id limit %s for update skip locked",
-            (limit,),
-        )
+        cur = await relay.execute(sql, params)
         rows = await cur.fetchall()
         held: list[_Held] = []
         for r in rows:
@@ -73,15 +82,23 @@ async def _unlock(relay: Conn, outbox_id: int) -> None:
     await cur.fetchone()
 
 
-async def run_in_process(stop: asyncio.Event, engines: Engines, storage: GcsStorage) -> None:
-    """Drain the outbox until ``stop`` is set. The worker pool must already be open (db.open_worker_pool)."""
+async def run_in_process(
+    stop: asyncio.Event,
+    engines: Engines,
+    storage: GcsStorage,
+    queues: tuple[str, ...] | None = None,
+) -> None:
+    """Drain the outbox until ``stop`` is set. The worker pool must already be open (db.open_worker_pool).
+
+    ``queues`` is the same filter as ``claim``. None drains every queue.
+    """
     url = get_settings().database_url_relay
     if not url:
         raise RuntimeError("the in-process relay needs DATABASE_URL_RELAY")
     relay = await connect_as(url, RELAY_ROLE)
     try:
         while not stop.is_set():
-            held = await claim(relay, _CLAIM_BATCH)
+            held = await claim(relay, _CLAIM_BATCH, queues)
             for item in held:
                 try:
                     # stage failures already mark the run failed; this only guards the loop (e.g. DB down)

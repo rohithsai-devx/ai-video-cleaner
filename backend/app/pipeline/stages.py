@@ -11,8 +11,9 @@ Any other status returns no events and does not call the engine.
 A stage that raises is moved to ``failed`` (retryable) in a fresh transaction. ``approved`` has no
 edge to ``failed``, so that failure goes through ``postprocessing`` first.
 
-Stages: pre-cpu (queued -> preprocessing -> agent_running), agent (agent_running -> awaiting_review, or
--> approved in auto mode), post-io (approved -> postprocessing -> done).
+Stages: pre-cpu (queued -> preprocessing -> agent_running), agent (agent_running -> approved only when
+the run is auto and the proposal was accepted, otherwise awaiting_review), post-io
+(approved -> postprocessing -> done).
 """
 
 import dataclasses
@@ -23,7 +24,7 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
-from app.contracts.enums import RunStatus
+from app.contracts.enums import RunStatus, VoiceMode
 from app.contracts.events import RunDoneEvent, RunFailedEvent, RunProposalReadyEvent
 from app.contracts.pipeline import PreprocessResult, Proposal
 from app.pipeline.engines import Engines
@@ -124,6 +125,15 @@ async def _fail(task: Task, exc: Exception) -> list[Event]:
         return []  # someone else moved it first
 
 
+async def _voice(conn: Conn, run_id: UUID) -> VoiceMode:
+    cur = await conn.execute("select voice from runs where id = %s", (run_id,))
+    row = await cur.fetchone()
+    if row is None:
+        raise RuntimeError(f"run {run_id} has no voice")
+    voice: VoiceMode = row["voice"]
+    return voice
+
+
 async def _raw_uri(conn: Conn, run: RunRef) -> str:
     cur = await conn.execute("select raw_uri from videos where id = %s", (run.video_id,))
     row = await cur.fetchone()
@@ -183,11 +193,11 @@ async def _agent(conn: Conn, run: RunRef, engines: Engines, storage: GcsStorage)
     )
     flags = list(out.flags)
     await conn.execute("update runs set flags = %s where id = %s", (Jsonb(flags), run.id))
-    auto = run.mode == "auto"
+    approved = run.mode == "auto" and out.accepted
     events: list[Event] = [
-        ("run.proposal_ready", RunProposalReadyEvent(version=1, flags=flags, auto_approved=auto))
+        ("run.proposal_ready", RunProposalReadyEvent(version=1, flags=flags, auto_approved=approved))
     ]
-    if auto:
+    if approved:
         events += await lifecycle.advance(conn, run, "approved", stage="approved")
     else:
         events += await lifecycle.advance(conn, run, "awaiting_review", stage="review")
@@ -207,13 +217,14 @@ async def _postprocess(task: Task, engines: Engines, storage: GcsStorage) -> lis
         if run is None:
             return []
         proposal = await _latest_proposal(conn, run)
+        voice = await _voice(conn, run.id)
         events: list[Event] = []
         if run.status == "approved":
             events = await lifecycle.advance(conn, run, "postprocessing", stage="render")
             run = dataclasses.replace(run, status="postprocessing", stage="render")
     # Beat 2. Same rule as preprocess: render (ffmpeg) runs with no connection held.
     output_uri = storage.output_uri(run.id, proposal.version)
-    await engines.render(run, proposal, output_uri)
+    await engines.render(run, proposal, output_uri, voice=voice)
     async with worker_tx(task.workspace_id) as conn:
         run = await _still(conn, task, "postprocessing")
         if run is None:

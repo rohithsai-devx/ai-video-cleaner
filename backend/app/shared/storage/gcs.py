@@ -124,6 +124,13 @@ class GcsStorage:
             raise ValueError(f"download is limited to bucket {self.bucket_name}: {uri}")
         await asyncio.to_thread(self._download_to, key, fspath(path))
 
+    def download_bytes(self, uri: str) -> bytes:
+        """Read a small object from a worker thread, such as a keyframe for VLM input."""
+        key = self._own_key(uri)
+        if key is None:
+            raise ValueError(f"download is limited to bucket {self.bucket_name}: {uri}")
+        return self._blob(key).download_as_bytes()
+
     async def upload_file(self, uri: str, path: str | PathLike[str], content_type: str) -> None:
         """Stream a file to an object. Does not read the file into memory first."""
         key = self._own_key(uri)
