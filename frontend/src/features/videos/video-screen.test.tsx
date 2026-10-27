@@ -23,13 +23,17 @@ const mock = vi.hoisted(() => ({
       voices: { id: string; label: string; hint: string; sample_path: string }[];
     },
   },
+  runs: { isPending: false, isError: false, data: [] as unknown[] },
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/api/client", () => ({
   $api: {
-    useQuery: (_method: string, path: string) =>
-      path === "/voices" ? mock.voices : { isPending: false, isError: false, data: mock.video },
+    useQuery: (_method: string, path: string) => {
+      if (path === "/voices") return mock.voices;
+      if (path === "/videos/{video_id}/runs") return mock.runs;
+      return { isPending: false, isError: false, data: mock.video };
+    },
     useMutation: () => ({ mutate: mock.mutate, isPending: false, isError: false }),
   },
 }));
@@ -64,6 +68,7 @@ describe("VideoScreen start run", () => {
     });
     mock.voices.isPending = true;
     mock.voices.data = null;
+    mock.runs = { isPending: false, isError: false, data: [] };
   });
 
   it("shows the clean panel and explains the review switch", () => {

@@ -22,6 +22,7 @@ import {
   type Voice,
 } from "./run-request";
 import { formatDuration } from "./video-status";
+import { PastAttempts } from "./past-attempts";
 
 export type ShareSlot = (video: {
   videoId: string;
@@ -194,6 +195,9 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
                 Your recording is saved as it is. Cleaning makes a new version and never changes
                 this one.
               </p>
+              {v.status === "uploaded" ? (
+                <PastAttempts videoId={id} currentRunId={v.current_run?.run_id ?? null} />
+              ) : null}
               {v.status === "ready"
                 ? renderShare?.({
                     videoId: id,
