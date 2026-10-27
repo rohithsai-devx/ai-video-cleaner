@@ -32,6 +32,22 @@ export type ShareSlot = (video: {
   originalUrl?: string | null;
 }) => ReactNode;
 
+function originalShareStatus(
+  status: components["schemas"]["Video"]["status"],
+): components["schemas"]["Video"]["status"] | null {
+  switch (status) {
+    case "uploaded":
+    case "processing":
+    case "rendering":
+    case "failed":
+      return status;
+    case "awaiting_review":
+      return "processing";
+    default:
+      return null;
+  }
+}
+
 const NARRATION = {
   original: "Your own audio, with the cut parts removed. Nothing is re-recorded.",
   ai: "The AI writes a clean script from what you said and reads it out. You can edit every line first.",
@@ -81,6 +97,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
   const start = $api.useMutation("post", "/videos/{video_id}/runs");
 
   const v = video.data;
+  const shareStatus = v ? originalShareStatus(v.status) : null;
   const voices = voiceList.data?.voices ?? [];
   const selectedVoiceId = voices.some((item) => item.id === voiceId)
     ? voiceId
@@ -209,10 +226,10 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
               {v.status === "uploaded" ? (
                 <PastAttempts videoId={id} currentRunId={v.current_run?.run_id ?? null} />
               ) : null}
-              {v.status === "ready"
+              {v.original_url != null && shareStatus != null
                 ? renderShare?.({
                     videoId: id,
-                    status: v.status,
+                    status: shareStatus,
                     title: v.title,
                     playbackUrl: v.playback_url,
                     originalUrl: v.original_url,

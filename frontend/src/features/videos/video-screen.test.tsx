@@ -246,9 +246,14 @@ describe("VideoScreen start run", () => {
     expect(screen.getByText("About 1 minute for a 1-minute recording.")).toBeInTheDocument();
   });
 
-  it("passes the C9 data to the share slot for a ready video", () => {
-    mock.video.status = "ready";
-    mock.video.playback_url = "/clean.mp4";
+  it.each([
+    ["uploaded", "uploaded"],
+    ["processing", "processing"],
+    ["awaiting_review", "processing"],
+    ["rendering", "rendering"],
+    ["failed", "failed"],
+  ])("passes the C9 data to the share slot for %s", (videoStatus, shareStatus) => {
+    mock.video.status = videoStatus;
     mock.video.original_url = "/original.mp4";
     const renderShare = vi.fn(() => <div>Share slot</div>);
 
@@ -256,12 +261,35 @@ describe("VideoScreen start run", () => {
 
     expect(renderShare).toHaveBeenCalledWith({
       videoId: "v1",
-      status: "ready",
+      status: shareStatus,
       title: "Demo",
-      playbackUrl: "/clean.mp4",
+      playbackUrl: null,
       originalUrl: "/original.mp4",
     });
     expect(screen.getByText("Share slot")).toBeInTheDocument();
+  });
+
+  it.each(["uploading", "ready"])(
+    "does not render the original share slot for %s",
+    (videoStatus) => {
+      mock.video.status = videoStatus;
+      mock.video.original_url = "/original.mp4";
+      const renderShare = vi.fn(() => <div>Share slot</div>);
+
+      renderScreen(renderShare);
+
+      expect(renderShare).not.toHaveBeenCalled();
+      expect(screen.queryByText("Share slot")).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not render the original share slot when the original URL is unavailable", () => {
+    const renderShare = vi.fn(() => <div>Share slot</div>);
+
+    renderScreen(renderShare);
+
+    expect(renderShare).not.toHaveBeenCalled();
+    expect(screen.queryByText("Share slot")).not.toBeInTheDocument();
   });
 
   it("shows the player error copy when playback fails", () => {
