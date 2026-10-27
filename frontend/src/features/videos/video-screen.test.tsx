@@ -9,6 +9,7 @@ const mock = vi.hoisted(() => ({
     title: "Demo",
     status: "uploaded" as string,
     duration_s: 60,
+    estimated_run_seconds: null as number | null,
     width: 1920 as number | null,
     height: 1080 as number | null,
     playback_url: null as string | null,
@@ -61,6 +62,8 @@ describe("VideoScreen start run", () => {
     mock.mutate.mockClear();
     Object.assign(mock.video, {
       status: "uploaded",
+      duration_s: 60,
+      estimated_run_seconds: null,
       width: 1920,
       height: 1080,
       playback_url: null,
@@ -208,6 +211,28 @@ describe("VideoScreen start run", () => {
 
     expect(screen.getByText("Original recording")).toBeInTheDocument();
     expect(screen.getByText("1:00 · 1920 × 1080")).toBeInTheDocument();
+  });
+
+  it("hides the estimate when the backend has no estimate yet", () => {
+    renderScreen();
+
+    expect(screen.queryByText(/About .* for a .* recording\./)).not.toBeInTheDocument();
+  });
+
+  it("shows the rounded recording length and estimated minutes", () => {
+    mock.video.duration_s = 372;
+    mock.video.estimated_run_seconds = 61;
+    renderScreen();
+
+    expect(screen.getByText("About 2 minutes for a 6-minute recording.")).toBeInTheDocument();
+  });
+
+  it("uses singular minute when the estimate is one minute", () => {
+    mock.video.duration_s = 59;
+    mock.video.estimated_run_seconds = 30;
+    renderScreen();
+
+    expect(screen.getByText("About 1 minute for a 1-minute recording.")).toBeInTheDocument();
   });
 
   it("passes the C9 data to the share slot for a ready video", () => {

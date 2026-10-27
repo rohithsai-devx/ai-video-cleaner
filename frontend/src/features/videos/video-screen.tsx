@@ -56,6 +56,16 @@ const FIX_OPTION_ROWS: { key: keyof FixOptions; label: string; hint: string }[] 
   },
 ];
 
+function estimateLine(
+  estimatedRunSeconds: number | null | undefined,
+  durationSeconds: number | null | undefined,
+): string | null {
+  if (estimatedRunSeconds == null || durationSeconds == null) return null;
+  const estimateMinutes = Math.ceil(estimatedRunSeconds / 60);
+  const recordingMinutes = Math.round(durationSeconds / 60);
+  return `About ${estimateMinutes} ${estimateMinutes === 1 ? "minute" : "minutes"} for a ${recordingMinutes}-minute recording.`;
+}
+
 export function VideoScreen({ id, renderShare }: { id: string; renderShare?: ShareSlot }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("review");
@@ -81,6 +91,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
       ? v.playback_url
       : (v.original_url ?? v.playback_url)
     : null;
+  const estimate = estimateLine(v?.estimated_run_seconds, v?.duration_s);
 
   const queryClient = useQueryClient();
 
@@ -331,6 +342,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
               <Sparkle size={18} aria-hidden="true" />
               {start.isPending ? "Starting…" : "Clean this video"}
             </Button>
+            {estimate ? <p className="m-0 text-[13px] text-muted">{estimate}</p> : null}
           </aside>
         ) : null}
       </main>
