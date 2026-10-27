@@ -70,7 +70,7 @@ async def test_capped_auto_run_stops_for_review(client: httpx.AsyncClient, worke
     bundle = Scripted(script=good_script(pre, text="alpha 99"), plan=good_plan(pre), p_yes=0.99)
     storage = GcsStorage(bucket="b", emulator_host="localhost:9")
     events = await handle(
-        Task(task_id="agent-1", queue="agent", run_id=run.id, workspace_id=workspace_id),
+        Task(task_id="agent-1", queue="agent", run_id=run.id, workspace_id=workspace_id, attempt=1),
         MediaEngines(storage, bundle=bundle),
         storage,
     )

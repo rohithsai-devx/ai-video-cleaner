@@ -211,10 +211,58 @@ async def test_cancelled_run_is_left_alone_by_its_stage(
         assert run is not None
         await lifecycle.advance(conn, run, "cancelled", stage=None)
 
-    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    task = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
     assert await stages.handle(task, FixtureEngines(storage), storage) == []
     assert (await _status(uid, run_id))["status"] == "cancelled"
     assert await _proposals(uid, run_id) == []
+
+
+async def test_old_attempt_task_is_a_noop(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    async with db.worker_tx(ws) as conn:
+        await conn.execute("update runs set attempt = 2 where id = %s", (run_id,))
+
+    relay_url = get_settings().database_url_relay
+    assert relay_url
+    relay_conn = await db.connect_as(relay_url, db.RELAY_ROLE)
+    try:
+        cur = await relay_conn.execute(
+            "select count(*) as n from outbox where run_id = %s and queue = 'pre-cpu'", (run_id,)
+        )
+        before = await cur.fetchone()
+    finally:
+        await relay_conn.close()
+
+    task = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
+    assert await stages.handle(task, FixtureEngines(storage), storage) == []
+
+    row = await _status(uid, run_id)
+    assert row["status"] == "queued"
+    assert await _proposals(uid, run_id) == []
+    relay_conn = await db.connect_as(relay_url, db.RELAY_ROLE)
+    try:
+        cur = await relay_conn.execute(
+            "select count(*) as n from outbox where run_id = %s and queue = 'pre-cpu'", (run_id,)
+        )
+        after = await cur.fetchone()
+    finally:
+        await relay_conn.close()
+    assert before == after == {"n": 1}
 
 
 async def test_duplicate_delivery_is_a_no_op(
@@ -223,8 +271,20 @@ async def test_duplicate_delivery_is_a_no_op(
     uid = await _signup(api)
     run_id, _, ws = await _start_run(uid, "review", storage)
     engines = FixtureEngines(storage)
-    pre = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
-    agent = Task(task_id=db.task_id(run_id, "agent", 1), queue="agent", run_id=run_id, workspace_id=ws)
+    pre = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
+    agent = Task(
+        task_id=db.task_id(run_id, "agent", 1),
+        queue="agent",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
 
     first = await stages.handle(pre, engines, storage)
     assert [name for name, _ in first][-1] == "run.status"
@@ -298,7 +358,13 @@ async def test_preprocess_failure_after_status_commit_marks_the_run_failed(
     uid = await _signup(api)
     run_id, _, ws = await _start_run(uid, "review", storage)
     engines = _BoomPreprocess(storage, uid, run_id)
-    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    task = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
     events = await stages.handle(task, engines, storage)
     assert engines.saw == "preprocessing"  # beat 1 committed before ffmpeg
     name, err = events[-1]
@@ -314,7 +380,13 @@ async def test_preprocess_sees_committed_status_and_a_replay_is_a_no_op(
     uid = await _signup(api)
     run_id, _, ws = await _start_run(uid, "review", storage)
     engines = _PreprocessAfterCommit(storage, uid, run_id)
-    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    task = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
 
     first = await stages.handle(task, engines, storage)
     assert [name for name, _ in first][-1] == "run.status"
@@ -344,7 +416,13 @@ async def test_preprocessing_redelivery_finishes_the_stage(
         assert run is not None and run.status == "queued"
         await lifecycle.advance(conn, run, "preprocessing", stage="preprocess")
 
-    task = Task(task_id=db.task_id(run_id, "pre-cpu", 1), queue="pre-cpu", run_id=run_id, workspace_id=ws)
+    task = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=ws,
+        attempt=1,
+    )
     events = await stages.handle(task, FixtureEngines(storage), storage)
     assert [name for name, _ in events][-1] == "run.status"
     assert (await _status(uid, run_id))["status"] == "agent_running"
@@ -442,7 +520,13 @@ async def test_a_failing_stage_marks_the_run_failed_and_frees_the_video(
     engines = _Broken(storage, where)
     events: list[Any] = []
     for q in ("pre-cpu", "agent", "post-io"):
-        task = Task(task_id=db.task_id(run_id, q, 1), queue=q, run_id=run_id, workspace_id=ws)  # type: ignore[arg-type]
+        task = Task(
+            task_id=db.task_id(run_id, q, 1),
+            queue=q,
+            run_id=run_id,
+            workspace_id=ws,
+            attempt=1,
+        )  # type: ignore[arg-type]
         events = await stages.handle(task, engines, storage)
         if q == queue:
             break

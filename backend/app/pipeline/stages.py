@@ -46,6 +46,7 @@ class Task:
     queue: Queue
     run_id: UUID
     workspace_id: UUID
+    attempt: int
 
 
 async def handle(task: Task, engines: Engines, storage: GcsStorage) -> list[Event]:
@@ -84,6 +85,15 @@ async def _gate(conn: Conn, task: Task, start: RunStatus, busy: RunStatus) -> Ru
     if run is None:
         log.info("run %s not visible to this workspace; task %s dropped", task.run_id, task.task_id)
         return None
+    if task.attempt != run.attempt:
+        log.info(
+            "run %s is on attempt %s, not task attempt %s; task %s is a no-op",
+            run.id,
+            run.attempt,
+            task.attempt,
+            task.task_id,
+        )
+        return None
     if run.status != start and run.status != busy:
         log.info("run %s is %s, not %s; task %s is a no-op", run.id, run.status, start, task.task_id)
         return None
@@ -93,11 +103,13 @@ async def _gate(conn: Conn, task: Task, start: RunStatus, busy: RunStatus) -> Ru
 async def _still(conn: Conn, task: Task, busy: RunStatus) -> RunRef | None:
     """The run still in the engine's status. None: it moved (cancelled) while the engine ran."""
     run = await lifecycle.load(conn, task.run_id)
-    if run is None or run.status != busy:
+    if run is None or run.attempt != task.attempt or run.status != busy:
         log.info(
-            "run %s is %s after the engine; task %s is a no-op",
+            "run %s is attempt %s status %s after the engine; task attempt %s is a no-op",
             task.run_id,
+            run.attempt if run is not None else "gone",
             run.status if run is not None else "gone",
+            task.attempt,
             task.task_id,
         )
         return None
@@ -114,6 +126,14 @@ async def _fail(task: Task, exc: Exception) -> list[Event]:
         async with worker_tx(task.workspace_id) as conn:
             run = await lifecycle.load(conn, task.run_id)
             if run is None or run.status in ("done", "failed", "cancelled"):
+                return []
+            if run.attempt != task.attempt:
+                log.info(
+                    "run %s is on attempt %s, not failing task attempt %s; stale failure dropped",
+                    run.id,
+                    run.attempt,
+                    task.attempt,
+                )
                 return []
             events: list[Event] = []
             if run.status in _VIA:

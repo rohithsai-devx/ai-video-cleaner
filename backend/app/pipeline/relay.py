@@ -43,7 +43,7 @@ async def claim(relay: Conn, limit: int, queues: tuple[str, ...] | None = None) 
     """
     if queues is not None and len(queues) == 0:
         return []
-    sql = "select id, workspace_id, run_id, queue, task_id from outbox where sent_at is null"
+    sql = "select id, workspace_id, run_id, queue, task_id, payload from outbox where sent_at is null"
     params: list[object] = []
     if queues is not None:
         sql += " and queue = any(%s)"
@@ -67,6 +67,7 @@ async def claim(relay: Conn, limit: int, queues: tuple[str, ...] | None = None) 
                         queue=r["queue"],
                         run_id=r["run_id"],
                         workspace_id=r["workspace_id"],
+                        attempt=int(r["payload"]["attempt"]),
                     ),
                 )
             )
