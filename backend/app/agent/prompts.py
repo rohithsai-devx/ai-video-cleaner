@@ -25,6 +25,7 @@ the timed words someone said while recording their screen.
 Return the steps in the order they were said, the key terms worth keeping in the final
 script, and the filler spans (ums, restarts, false starts) that a clean script should drop.
 Give each step a short chapter title of one to four plain words.
+Drop reasons are shown to the viewer; describe each in one short plain sentence.
 The drops must be spans of the words you were given, not new text.
 Only propose drops of these kinds: {allowed_drop_kinds}. Follow any feedback from the last attempt."""
 
@@ -40,4 +41,5 @@ Write the edit plan the renderer will cut with:
 - keep entries carry the picture for one script block (block_id) at a sane speed up to {max_speed};
   cut entries remove a span from the video.
 - Together the kept spans must cover every script block's segments, or the render cannot be built.
+- Reasoning is shown to the viewer as one short plain sentence, without ids or check names.
 - Feedback lists what a check rejected on the last attempt. Fix exactly that, keep the rest."""

@@ -31,6 +31,18 @@ _DUR_TOL = 0.5
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _URL = re.compile(r"https?://\S+|www\.\S+")
 _QUOTE = re.compile(r'"([^"]+)"')
+_INTERNAL_ID = re.compile(r"\b(?:seg|block|step|frame)_\w+\b", re.IGNORECASE)
+_CHECK_NAMES = (
+    "length_fit",
+    "key_terms_kept",
+    "coverage_order",
+    "nothing_invented",
+    "clean_only",
+    EDL_VALID,
+    "edl_covers_script",
+    FIX_OPTIONS_RESPECTED,
+    "reasons_plain",
+)
 
 
 def edl_valid(plan: EditPlan, seg_contexts: list[SegContext], duration_s: float | None) -> CheckResult:
@@ -158,6 +170,44 @@ def fix_options_respected(state: AgentState, source: ProposalSource = "agent") -
     )
 
 
+def reasons_plain(state: AgentState) -> CheckResult:
+    return _plain_reasons(state.transcript_ctx, state.edit_plan)
+
+
+def _plain_reasons(transcript: TranscriptContext | None, plan: EditPlan | None) -> CheckResult:
+    problem: str | None = None
+    target: Agent = "transcript_context"
+    if transcript is not None:
+        copy = next(
+            (
+                text
+                for text in [
+                    *(step.title for step in transcript.steps),
+                    *(drop.reason for drop in transcript.drops),
+                ]
+                if _contains_internal_copy(text)
+            ),
+            None,
+        )
+        problem = copy
+    if problem is None and plan is not None:
+        target = "video_editor"
+        problem = next(
+            (entry.reasoning for entry in plan.entries if _contains_internal_copy(entry.reasoning)), None
+        )
+    return CheckResult(
+        name="reasons_plain",
+        passed=problem is None,
+        target=target,
+        message="" if problem is None else "Write reasons for the viewer, without ids.",
+    )
+
+
+def _contains_internal_copy(text: str) -> bool:
+    folded = text.casefold()
+    return _INTERNAL_ID.search(text) is not None or any(name in folded for name in _CHECK_NAMES)
+
+
 def _fix_options_check(
     transcript: TranscriptContext,
     plan: EditPlan | None,
@@ -247,6 +297,7 @@ def recheck(
         edl_valid(plan, seg_contexts, duration_s),
         edl_covers_script(script, plan),
         _fix_options_check(transcript, plan, segments, fix_options or FixOptions(), source),
+        _plain_reasons(transcript, plan),
     ]
 
 

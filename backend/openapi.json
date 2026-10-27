@@ -19,6 +19,79 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "Change": {
+        "properties": {
+          "change_id": {
+            "title": "Change Id",
+            "type": "string"
+          },
+          "hold_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold S"
+          },
+          "kind": {
+            "enum": [
+              "pause",
+              "filler",
+              "retake",
+              "cut",
+              "speed",
+              "hold"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "span": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Span",
+            "type": "array"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "undone": {
+            "title": "Undone",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "change_id",
+          "kind",
+          "span",
+          "reason",
+          "undone"
+        ],
+        "title": "Change",
+        "type": "object"
+      },
       "Chapter": {
         "properties": {
           "end": {
@@ -70,6 +143,7 @@
           },
           "target": {
             "enum": [
+              "transcript_context",
               "script_writer",
               "video_editor"
             ],
@@ -470,6 +544,14 @@
       "ProposalView": {
         "description": "GET/PUT /runs/{id}/proposal: the latest proposal plus keyframe thumbnail URLs.",
         "properties": {
+          "changes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
           "chapters": {
             "default": [],
             "items": {

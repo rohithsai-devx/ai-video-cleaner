@@ -67,6 +67,16 @@ async def latest(conn: Conn, run: RunRef) -> tuple[UUID, Proposal] | None:
     return row["id"], _to_proposal(row)
 
 
+async def first_version(conn: Conn, run_id: UUID) -> Proposal | None:
+    cur = await conn.execute(
+        "select p.*, r.flags from proposals p join runs r on r.id = p.run_id"
+        " where p.run_id = %s and p.version = 1",
+        (run_id,),
+    )
+    row = await cur.fetchone()
+    return None if row is None else _to_proposal(row)
+
+
 async def keyframes(conn: Conn, run: RunRef) -> list[Keyframe]:
     cur = await conn.execute("select pre from runs where id = %s", (run.id,))
     row = await cur.fetchone()

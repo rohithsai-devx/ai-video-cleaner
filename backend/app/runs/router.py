@@ -14,6 +14,7 @@ from app.auth import CurrentUser
 from app.contracts.events import RunEvent, RunStatusEvent
 from app.contracts.pipeline import Proposal
 from app.runs import lifecycle, review
+from app.runs.changes import changes
 from app.runs.chapters import chapters
 from app.runs.schemas import (
     ApproveRequest,
@@ -78,12 +79,22 @@ def _conflict(code: str, message: str, **extra: object) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, {"code": code, "message": message, **extra})
 
 
-async def _view(storage: GcsStorage, proposal: Proposal, frames: list[review.Keyframe]) -> ProposalView:
+async def _view(
+    storage: GcsStorage,
+    proposal: Proposal,
+    frames: list[review.Keyframe],
+    agent_v1: Proposal,
+) -> ProposalView:
     urls = await storage.sign(*(k.uri for k in frames))  # after commit, in a thread
     thumbs = [
         KeyframeThumb(frame_id=k.frame_id, t=k.t, url=u) for k, u in zip(frames, urls, strict=True) if u
     ]
-    return ProposalView(proposal=proposal, keyframes=thumbs, chapters=chapters(proposal))
+    return ProposalView(
+        proposal=proposal,
+        keyframes=thumbs,
+        changes=changes(agent_v1, proposal),
+        chapters=chapters(proposal),
+    )
 
 
 @router.get("/runs/{run_id}", tags=["runs"])
@@ -109,12 +120,15 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
     async with tenant_tx(user_id) as conn:
         try:
             found = await review.read(conn, run_id)
+            agent_v1 = await review.first_version(conn, run_id) if found is not None else None
         except review.NoProposal:
             raise not_found("proposal") from None
     if found is None:
         raise not_found("run")
+    if agent_v1 is None:
+        raise not_found("proposal")
     proposal, frames = found
-    return await _view(storage, proposal, frames)
+    return await _view(storage, proposal, frames, agent_v1)
 
 
 @router.put("/runs/{run_id}/proposal", tags=["runs"])
@@ -128,7 +142,10 @@ async def update_proposal(
         with _domain_errors():
             proposal = await review.save_edit(conn, run, body)
         frames = await review.keyframes(conn, run)
-    return await _view(storage, proposal, frames)
+        agent_v1 = await review.first_version(conn, run_id)
+    if agent_v1 is None:
+        raise not_found("proposal")
+    return await _view(storage, proposal, frames, agent_v1)
 
 
 @router.post("/runs/{run_id}/approve", status_code=status.HTTP_202_ACCEPTED, tags=["runs"])

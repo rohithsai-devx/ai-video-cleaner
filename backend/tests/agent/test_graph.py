@@ -24,6 +24,7 @@ from app.contracts.pipeline import (
     ScriptBlock,
     SegContext,
     Segment,
+    Step,
     TranscriptContext,
     Word,
 )
@@ -289,6 +290,29 @@ def test_initial_state_carries_voice_and_fix_options() -> None:
 
     assert state.voice == "ai"
     assert state.fix_options == FixOptions(slow_parts=False)
+
+
+def test_non_plain_chapter_title_routes_back_to_transcript_context() -> None:
+    pre = clip()
+    invalid = TranscriptContext(
+        steps=[Step(step_id="s1", summary="Open the Reports page", span=(0.0, 4.0), title="Open block_b1")],
+        key_terms=[],
+        drops=[],
+    )
+    corrected = invalid.model_copy(
+        update={"steps": [invalid.steps[0].model_copy(update={"title": "Open Reports"})]}
+    )
+    bundle = Scripted(
+        script=good_script(pre),
+        plan=good_plan(pre),
+        transcripts=[invalid, corrected],
+    )
+
+    _compiled, raw = _run(bundle, initial_state(REF, pre))
+
+    assert bundle.log.count("TranscriptContext") == 2
+    assert raw["transcript_ctx"].steps[0].title == "Open Reports"
+    assert to_output(raw).accepted is True
 
 
 def test_rejection_below_the_threshold_returns_to_the_writer() -> None:

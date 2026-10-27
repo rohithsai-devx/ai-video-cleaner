@@ -368,6 +368,7 @@ def test_recheck_recomputes_every_check_and_drops_stale_script_results() -> None
         "edl_valid",
         "edl_covers_script",
         "fix_options_respected",
+        "reasons_plain",
     ]
     assert all(c.passed for c in fresh)
 

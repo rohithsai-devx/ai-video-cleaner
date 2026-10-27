@@ -93,6 +93,19 @@ class Chapter(BaseModel):
     end: float
 
 
+ChangeKind = Literal["pause", "filler", "retake", "cut", "speed", "hold"]
+
+
+class Change(BaseModel):
+    change_id: str
+    kind: ChangeKind
+    span: Span
+    speed: float | None = None
+    hold_s: float | None = None
+    reason: str
+    undone: bool
+
+
 class TranscriptContext(BaseModel):  # transcript_context
     steps: list[Step]
     key_terms: list[str]
@@ -130,7 +143,7 @@ class EditPlan(BaseModel):  # video_editor
 
 # ---------- orchestrator ----------
 
-Agent = Literal["script_writer", "video_editor"]
+Agent = Literal["transcript_context", "script_writer", "video_editor"]
 
 
 class CheckResult(BaseModel):
@@ -188,6 +201,8 @@ class Proposal(BaseModel):
 __all__ = [
     "Agent",
     "AgentState",
+    "Change",
+    "ChangeKind",
     "Chapter",
     "CheckResult",
     "Drop",

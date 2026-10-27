@@ -1,6 +1,6 @@
 """The only router. Code checks, then a yes/no verdict, then a critique only on rejection."""
 
-from typing import Any
+from typing import Any, Literal
 
 from langgraph.graph import END
 from langgraph.runtime import Runtime
@@ -8,7 +8,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agent.state import Ctx, make_call
-from app.contracts.pipeline import Agent, AgentState, CheckResult
+from app.contracts.pipeline import AgentState, CheckResult
 from app.runs import checks as code_checks
 
 _QUESTION = {
@@ -55,7 +55,9 @@ def _review(state: AgentState, runtime: Runtime[Ctx]) -> Command[Any]:
         )
         return _redo(state, _route_target(alive), notes, results, runtime)
 
-    target: Agent = "script_writer" if state.stage == "script" else "video_editor"
+    target: Literal["script_writer", "video_editor"] = (
+        "script_writer" if state.stage == "script" else "video_editor"
+    )
     call = make_call(runtime.context.workspace_id, state.run_id, target)
     verdict = runtime.context.bundle.yes_no(call, _QUESTION[target], _summary(state))
     if verdict.p_yes >= runtime.context.accept_threshold:
@@ -91,6 +93,7 @@ def _results(state: AgentState) -> list[CheckResult]:
         code_checks.nothing_invented(state.script, state.pre.words, state.seg_contexts),
         code_checks.clean_only(state.script, state.pre.words, state.voice),
         code_checks.fix_options_respected(state),
+        code_checks.reasons_plain(state),
     ]
 
 
@@ -127,6 +130,11 @@ def _redo(
                 update["transcript_ctx"] = state.transcript_ctx.model_copy(
                     update={"drops": [drop for drop in state.transcript_ctx.drops if drop.kind in allowed]}
                 )
+            if state.stage == "edit":
+                return Command(goto=END, update=update)
+            if state.script is not None:
+                update["stage"] = "edit"
+                return Command(goto="video_editor", update=update)
             update["stage"] = "script"
             return Command(goto="script_writer", update=update)
         # END is only legal from the edit stage: a proposal leaving the graph must be complete,

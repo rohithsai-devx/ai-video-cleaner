@@ -292,6 +292,29 @@ export interface components {
              */
             base_version?: number | null;
         };
+        /** Change */
+        Change: {
+            /** Change Id */
+            change_id: string;
+            /** Hold S */
+            hold_s?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pause" | "filler" | "retake" | "cut" | "speed" | "hold";
+            /** Reason */
+            reason: string;
+            /** Span */
+            span: [
+                number,
+                number
+            ];
+            /** Speed */
+            speed?: number | null;
+            /** Undone */
+            undone: boolean;
+        };
         /** Chapter */
         Chapter: {
             /** End */
@@ -318,7 +341,7 @@ export interface components {
              * Target
              * @enum {string}
              */
-            target: "script_writer" | "video_editor";
+            target: "transcript_context" | "script_writer" | "video_editor";
         };
         /** Drop */
         Drop: {
@@ -487,6 +510,11 @@ export interface components {
          * @description GET/PUT /runs/{id}/proposal: the latest proposal plus keyframe thumbnail URLs.
          */
         ProposalView: {
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["Change"][];
             /**
              * Chapters
              * @default []
