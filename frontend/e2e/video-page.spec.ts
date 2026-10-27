@@ -1,27 +1,53 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { createUploadedVideo, signUp } from "./helpers";
 
-test("the uploaded video page shows controls, voices, and past attempts", async ({ page }) => {
-  await signUp(page);
-  const id = await createUploadedVideo(page, "Setting up a new project");
-  const currentRunId = "run-done-current";
-  const createdAt = new Date().toISOString();
-  const attempts = [
-    { run_id: "run-review", status: "awaiting_review", voice: "original", needs_you: 3 },
-    { run_id: "run-queued", status: "queued", voice: "ai", needs_you: 0 },
-    { run_id: "run-preprocessing", status: "preprocessing", voice: "original", needs_you: 0 },
-    { run_id: "run-agent", status: "agent_running", voice: "ai", needs_you: 0 },
-    { run_id: "run-approved", status: "approved", voice: "original", needs_you: 0 },
-    { run_id: "run-postprocessing", status: "postprocessing", voice: "ai", needs_you: 0 },
-    { run_id: currentRunId, status: "done", voice: "original", needs_you: 0 },
-    { run_id: "run-done-old", status: "done", voice: "ai", needs_you: 0 },
-    { run_id: "run-failed", status: "failed", voice: "original", needs_you: 0 },
-    { run_id: "run-cancelled", status: "cancelled", voice: "ai", needs_you: 0 },
-  ].map((run) => ({
-    ...run,
-    created_at: createdAt,
-    voice_id: run.voice === "ai" ? "coral" : null,
+type RunStatus =
+  | "queued"
+  | "preprocessing"
+  | "agent_running"
+  | "awaiting_review"
+  | "approved"
+  | "postprocessing"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+type Attempt = {
+  run_id: string;
+  status: RunStatus;
+  voice: "original" | "ai";
+  voice_id: string | null;
+  needs_you: number;
+  created_at: string;
+};
+
+function attempts(
+  rows: Array<Pick<Attempt, "run_id" | "status" | "voice"> & Partial<Attempt>>,
+  createdAt = new Date().toISOString(),
+): Attempt[] {
+  return rows.map((row) => ({
+    ...row,
+    voice_id: row.voice === "ai" ? (row.voice_id ?? "coral") : null,
+    needs_you: row.needs_you ?? 0,
+    created_at: row.created_at ?? createdAt,
   }));
+}
+
+function yesterdayAt(hour: number, minute: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+}
+
+async function mockVideoPage(
+  page: Page,
+  id: string,
+  currentRunId: string,
+  currentRunStatus: RunStatus,
+  rows: Attempt[],
+) {
+  const createdAt = new Date().toISOString();
 
   await page.route(`**/api/videos/${id}`, async (route) => {
     if (route.request().method() !== "GET") return route.continue();
@@ -35,9 +61,9 @@ test("the uploaded video page shows controls, voices, and past attempts", async 
         height: 1080,
         estimated_run_seconds: null,
         playback_url: null,
-        original_url: null,
+        original_url: "/original.mp4",
         poster_url: null,
-        current_run: { run_id: currentRunId, status: "done" },
+        current_run: { run_id: currentRunId, status: currentRunStatus },
         created_at: createdAt,
         updated_at: createdAt,
       },
@@ -46,7 +72,7 @@ test("the uploaded video page shows controls, voices, and past attempts", async 
 
   await page.route(`**/api/videos/${id}/runs`, async (route) => {
     if (route.request().method() === "GET") {
-      await route.fulfill({ json: attempts });
+      await route.fulfill({ json: rows });
       return;
     }
     await route.fulfill({
@@ -76,6 +102,27 @@ test("the uploaded video page shows controls, voices, and past attempts", async 
       },
     });
   });
+}
+
+test("the uploaded video page shows controls and the two wireframe attempts", async ({ page }) => {
+  await signUp(page);
+  const id = await createUploadedVideo(page, "Setting up a new project");
+  const rows = attempts([
+    {
+      run_id: "run-review",
+      status: "awaiting_review",
+      voice: "original",
+      needs_you: 3,
+      created_at: yesterdayAt(16, 10),
+    },
+    {
+      run_id: "run-cancelled",
+      status: "cancelled",
+      voice: "ai",
+      created_at: yesterdayAt(15, 52),
+    },
+  ]);
+  await mockVideoPage(page, id, "run-cancelled", "cancelled", rows);
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/videos/${id}`);
@@ -86,13 +133,6 @@ test("the uploaded video page shows controls, voices, and past attempts", async 
   await expect(page.getByRole("link", { name: "Open editor" })).toHaveAttribute(
     "href",
     "/runs/run-review/review",
-  );
-  await expect(page.getByRole("link", { name: "See progress" })).toHaveCount(5);
-  await expect(page.getByRole("link", { name: "Watch" })).toHaveAttribute("href", `/videos/${id}`);
-  await expect(page.getByText("Replaced by a newer version")).toBeVisible();
-  await expect(page.getByRole("link", { name: "See what happened" })).toHaveAttribute(
-    "href",
-    "/runs/run-failed",
   );
   await expect(page.getByText("No video made")).toBeVisible();
   await page.screenshot({ path: "test-results/video-page-default-1440.png", fullPage: true });
@@ -142,4 +182,54 @@ test("the uploaded video page shows controls, voices, and past attempts", async 
     voice_id: "sage",
     fix_options: { pauses: true, filler: false, retakes: true, slow_parts: true },
   });
+});
+
+test("past attempts show the right label and destination for every run status", async ({
+  page,
+}) => {
+  await signUp(page);
+  const id = await createUploadedVideo(page, "Setting up a new project");
+  const rows = attempts([
+    { run_id: "run-review", status: "awaiting_review", voice: "original", needs_you: 3 },
+    { run_id: "run-queued", status: "queued", voice: "ai" },
+    { run_id: "run-preprocessing", status: "preprocessing", voice: "original" },
+    { run_id: "run-agent", status: "agent_running", voice: "ai" },
+    { run_id: "run-approved", status: "approved", voice: "original" },
+    { run_id: "run-postprocessing", status: "postprocessing", voice: "ai" },
+    { run_id: "run-done-current", status: "done", voice: "original" },
+    { run_id: "run-done-old", status: "done", voice: "ai" },
+    { run_id: "run-failed", status: "failed", voice: "original" },
+    { run_id: "run-cancelled", status: "cancelled", voice: "ai" },
+  ]);
+  await mockVideoPage(page, id, "run-done-current", "done", rows);
+  await page.goto(`/videos/${id}`);
+
+  await expect(page.getByText("Waiting for you")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open editor" })).toHaveAttribute(
+    "href",
+    "/runs/run-review/review",
+  );
+  await expect(page.getByText("In progress")).toHaveCount(5);
+  const progressRunIds = [
+    "run-queued",
+    "run-preprocessing",
+    "run-agent",
+    "run-approved",
+    "run-postprocessing",
+  ];
+  const progressLinks = page.getByRole("link", { name: "See progress" });
+  await expect(progressLinks).toHaveCount(progressRunIds.length);
+  for (const [index, runId] of progressRunIds.entries()) {
+    await expect(progressLinks.nth(index)).toHaveAttribute("href", `/runs/${runId}`);
+  }
+  await expect(page.getByText("Done")).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "Watch" })).toHaveAttribute("href", `/videos/${id}`);
+  await expect(page.getByText("Replaced by a newer version")).toBeVisible();
+  await expect(page.getByText("Failed")).toBeVisible();
+  await expect(page.getByRole("link", { name: "See what happened" })).toHaveAttribute(
+    "href",
+    "/runs/run-failed",
+  );
+  await expect(page.getByText("Stopped")).toBeVisible();
+  await expect(page.getByText("No video made")).toBeVisible();
 });
