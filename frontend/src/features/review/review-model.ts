@@ -8,7 +8,12 @@ export type ProposalUpdate = S["ProposalUpdate"];
 type Spot = S["Spot"];
 type Fix = S["Fix"];
 
-/** Local edits on top of a saved proposal: block texts and the cut segments flipped back to keep. */
+/**
+ * Local edits on top of a saved proposal. `texts` are the user's own block edits, `kept` the cut
+ * segments flipped back to keep, `entryOverrides` the Done-by-AI undo state, and `chosenFixes` the
+ * needs-you picks (spot id to fix id). A chosen fix's patch is never copied into the other maps: it
+ * is applied when the effective plan is computed, so undo cannot drop it and a new pick replaces it.
+ */
 export type Draft = {
   texts: Record<string, string>;
   kept: Record<string, boolean>;
@@ -22,32 +27,42 @@ export const emptyDraft: Draft = {
   chosenFixes: {},
 };
 
-export function applyFixToDraft(draft: Draft, base: ProposalDoc, spot: Spot, fix: Fix): Draft {
+/** The fixes picked in this draft, in spot order. */
+function draftFixes(base: ProposalDoc, draft: Draft): Fix[] {
+  const chosen = draft.chosenFixes ?? {};
+  return (base.spots ?? []).flatMap((spot) => {
+    const fix = spot.fixes.find((item) => item.fix_id === chosen[spot.spot_id]);
+    return fix ? [fix] : [];
+  });
+}
+
+export function applyFixToDraft(draft: Draft, _base: ProposalDoc, spot: Spot, fix: Fix): Draft {
   const next: Draft = {
     ...draft,
     chosenFixes: { ...draft.chosenFixes, [spot.spot_id]: fix.fix_id },
   };
-  const blockPatch = fix.patch.block;
-  if (blockPatch) {
-    return {
-      ...next,
-      texts: { ...draft.texts, [blockPatch.block_id]: blockPatch.text },
-    };
+  // The fix's text replaces an earlier hand edit of the same block.
+  const blockId = fix.patch.block?.block_id;
+  if (blockId && next.texts[blockId] !== undefined) {
+    const texts = { ...next.texts };
+    delete texts[blockId];
+    return { ...next, texts };
   }
+  return next;
+}
 
-  const entryPatch = fix.patch.entry;
-  if (!entryPatch) return next;
-  const original =
-    draft.entryOverrides?.[entryPatch.seg_id] ??
-    base.edit_plan.entries.find((entry) => entry.seg_id === entryPatch.seg_id);
-  if (!original) return next;
-  return {
-    ...next,
-    entryOverrides: {
-      ...draft.entryOverrides,
-      [entryPatch.seg_id]: { ...original, ...entryPatch },
-    },
-  };
+/** Undoing or redoing a change on a segment also drops a fix picked in this draft for that segment. */
+export function withoutFixesOn(draft: Draft, base: ProposalDoc, segId: string): Draft {
+  const chosen = { ...draft.chosenFixes };
+  let changed = false;
+  for (const spot of base.spots ?? []) {
+    const fix = spot.fixes.find((item) => item.fix_id === chosen[spot.spot_id]);
+    if (fix?.patch.entry?.seg_id === segId) {
+      delete chosen[spot.spot_id];
+      changed = true;
+    }
+  }
+  return changed ? { ...draft, chosenFixes: chosen } : draft;
 }
 
 function sameEntry(left: Entry, right: Entry): boolean {
@@ -62,39 +77,65 @@ function sameEntry(left: Entry, right: Entry): boolean {
 }
 
 export function isDirty(base: ProposalDoc, draft: Draft): boolean {
-  const textChanged = base.script.blocks.some(
-    (b) => draft.texts[b.block_id] !== undefined && draft.texts[b.block_id] !== b.text,
-  );
-  const flipped = base.edit_plan.entries.some((e) => e.action === "cut" && draft.kept[e.seg_id]);
-  const entryChanged = base.edit_plan.entries.some((entry) => {
-    const override = draft.entryOverrides?.[entry.seg_id];
-    return override !== undefined && !sameEntry(entry, override);
-  });
+  const texts = effectiveTexts(base, draft);
+  const textChanged = base.script.blocks.some((b) => texts[b.block_id] !== b.text);
+  const entries = effectiveEntries(base, draft);
+  const entryChanged = base.edit_plan.entries.some((entry, i) => !sameEntry(entry, entries[i]));
   const fixChanged = Object.entries(draft.chosenFixes ?? {}).some(([spotId, fixId]) => {
     const original = base.spots?.find((spot) => spot.spot_id === spotId)?.chosen_fix_id;
     return original !== fixId;
   });
-  return textChanged || flipped || entryChanged || fixChanged;
+  return textChanged || entryChanged || fixChanged;
 }
 
+/** Block id to text: the saved text, then a chosen fix's text, then the user's own edit. */
+export function effectiveTexts(base: ProposalDoc, draft: Draft): Record<string, string> {
+  const texts = Object.fromEntries(base.script.blocks.map((b) => [b.block_id, b.text]));
+  for (const fix of draftFixes(base, draft)) {
+    const patch = fix.patch.block;
+    if (patch && patch.block_id in texts) texts[patch.block_id] = patch.text;
+  }
+  for (const [blockId, text] of Object.entries(draft.texts)) {
+    if (blockId in texts) texts[blockId] = text;
+  }
+  return texts;
+}
+
+/** The plan: saved entries, then undo state and kept flips, then chosen fixes (applied last). */
 export function effectiveEntries(base: ProposalDoc, draft: Draft): Entry[] {
+  const patches = new Map(
+    draftFixes(base, draft).flatMap((fix) =>
+      fix.patch.entry ? [[fix.patch.entry.seg_id, fix.patch.entry] as const] : [],
+    ),
+  );
   return base.edit_plan.entries.map((entry) => {
     const override = draft.entryOverrides?.[entry.seg_id];
-    if (override) return override;
-    return entry.action === "cut" && draft.kept[entry.seg_id]
-      ? { ...entry, action: "keep", speed: 1, freeze_s: 0 }
-      : entry;
+    const edited: Entry =
+      override ??
+      (entry.action === "cut" && draft.kept[entry.seg_id]
+        ? { ...entry, action: "keep", speed: 1, freeze_s: 0 }
+        : entry);
+    const patch = patches.get(entry.seg_id);
+    return patch
+      ? {
+          ...edited,
+          action: patch.action,
+          speed: patch.speed ?? 1,
+          freeze_s: patch.freeze_s ?? 0,
+        }
+      : edited;
   });
 }
 
 /** The PUT body: the saved proposal with only the user's allowed edits applied, on its version. */
 export function toUpdate(base: ProposalDoc, draft: Draft): ProposalUpdate {
   const chosenFixes = draft.chosenFixes ?? {};
+  const texts = effectiveTexts(base, draft);
   return {
     base_version: base.version,
     script: {
       ...base.script,
-      blocks: base.script.blocks.map((b) => ({ ...b, text: draft.texts[b.block_id] ?? b.text })),
+      blocks: base.script.blocks.map((b) => ({ ...b, text: texts[b.block_id] ?? b.text })),
     },
     edit_plan: { ...base.edit_plan, entries: effectiveEntries(base, draft) },
     seg_contexts: base.seg_contexts,
@@ -120,12 +161,12 @@ export function entryLength(e: Entry): number {
   return Math.max(0, e.src[1] - e.src[0]);
 }
 
+/** Same rule as the backend's timeline_duration: the span at its speed, plus any held frame. */
 export function outputLength(entries: Entry[]): number {
   return entries.reduce((sum, e) => {
     if (e.action === "cut") return sum;
-    if (e.action === "speed") return sum + entryLength(e) / (e.speed || 1);
-    if (e.action === "freeze") return sum + e.freeze_s;
-    return sum + entryLength(e);
+    const speed = e.action === "speed" ? e.speed || 1 : 1;
+    return sum + entryLength(e) / speed + Math.max(0, e.freeze_s);
   }, 0);
 }
 

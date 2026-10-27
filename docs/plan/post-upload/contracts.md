@@ -198,16 +198,17 @@ export type ShareSlot = (v: {
 // VideoScreen props gain: renderShare?: ShareSlot (placed in the left column, under the player)
 
 // ui/media-player.tsx, owned by FE-3; FE-4 uses it
-type PlayerSegment = { start: number; end: number; kind: "removed" | "speed" | "hold"; speed?: number; label: string };
+type PlayerSegment = { start: number; end: number; kind: "removed" | "speed" | "hold"; speed?: number; holdS?: number; label: string };
+// a hold plays its span, then shows the last frame for holdS seconds (the backend's timeline_duration)
 type PlayerProps = {
   src: string;
-  duration: number;              // seconds of the file being played
+  duration: number;              // seconds of the file being played; in "file" mode the loaded metadata wins
   mode: "cleaned-preview" | "file";   // cleaned-preview skips removed segments of the source file
   segments?: PlayerSegment[];
   chapters?: { title: string; start: number }[];
   badge?: string;
   onTime?: (t: number) => void;  // source-time clock
-  seekTo?: number;               // controlled seek
+  seekTo?: { time: number };     // controlled seek; a new object per request, so the same time seeks twice
 };
 
 // lib/cut-map.ts, owned by FE-3

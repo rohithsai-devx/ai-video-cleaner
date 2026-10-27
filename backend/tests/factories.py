@@ -160,6 +160,7 @@ async def _run_awaiting_review(
     storage: FakeStorage,
     *,
     fix_options: dict[str, bool] | None = None,
+    edit_plan: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str]:
     video = await _uploaded_video(c, h, storage)
     run_body: dict[str, Any] = {"mode": "review", "voice": "original"}
@@ -187,7 +188,7 @@ async def _run_awaiting_review(
                 video["workspace_id"],
                 run_id,
                 Jsonb(FIXTURE["script"]),
-                Jsonb(FIXTURE["edit_plan"]),
+                Jsonb(edit_plan if edit_plan is not None else FIXTURE["edit_plan"]),
                 Jsonb(FIXTURE["seg_contexts"]),
                 Jsonb(FIXTURE["transcript_ctx"]),
                 Jsonb(FIXTURE["checks"]),

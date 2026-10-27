@@ -1,5 +1,5 @@
 import type { components } from "@/api/generated/schema";
-import { formatClock } from "@/lib/clock";
+import { formatClock, formatRate, formatSeconds } from "@/lib/clock";
 import { segmentsFromChanges, type PlayerSegment } from "@/lib/cut-map";
 import type { TimelineItem, TimelineTrack, WaveformData } from "@/ui/timeline";
 
@@ -55,12 +55,12 @@ function labelForEntry(entry: Entry, change: Change | undefined): string {
     if (change.kind === "pause") return "Pause removed";
     if (change.kind === "filler") return "Filler word removed";
     if (change.kind === "retake") return "Retake removed";
-    if (change.kind === "speed") return `Sped up ${entry.speed}×`;
-    if (change.kind === "hold") return `Held last frame ${change.hold_s ?? 0} s`;
+    if (change.kind === "speed") return `Sped up ${formatRate(entry.speed)}×`;
+    if (change.kind === "hold") return `Held last frame ${formatSeconds(change.hold_s ?? 0)} s`;
     return "Cut";
   }
-  if (entry.action === "speed") return `Sped up ${entry.speed}×`;
-  if (entry.action === "freeze") return `Held last frame ${entry.freeze_s} s`;
+  if (entry.action === "speed") return `Sped up ${formatRate(entry.speed)}×`;
+  if (entry.action === "freeze") return `Held last frame ${formatSeconds(entry.freeze_s)} s`;
   return "Removed in the cleaned version";
 }
 
@@ -93,7 +93,7 @@ function screenItems(
     const kind = entry.action === "cut" ? "removed" : entry.action === "speed" ? "speed" : "hold";
     const text =
       entry.action === "speed"
-        ? `${entry.speed}×`
+        ? `${formatRate(entry.speed)}×`
         : entry.action === "freeze"
           ? `Hold ${entry.freeze_s} s`
           : "Removed";
@@ -172,8 +172,8 @@ export function buildReviewTracks({
           start: line.end,
           end: line.end + line.overflow_s,
           kind: "overflow",
-          text: `+${line.overflow_s} s`,
-          ariaLabel: `Narration continues ${line.overflow_s} seconds past this screen span`,
+          text: `+${formatSeconds(line.overflow_s)} s`,
+          ariaLabel: `Narration continues ${formatSeconds(line.overflow_s)} seconds past this screen span`,
         });
       }
     }

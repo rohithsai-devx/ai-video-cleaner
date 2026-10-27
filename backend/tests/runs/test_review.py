@@ -281,6 +281,28 @@ async def test_approve_marks_video_rendering_and_emits_status(
     assert body["status"] == "approved" and body["stage"] == "approved"
 
 
+async def test_agent_copy_with_an_id_does_not_block_approve(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    # The user cannot edit reasoning, so a reasons_plain failure must not strand the run in review.
+    plan = copy.deepcopy(FIXTURE["edit_plan"])
+    cut = next(entry for entry in plan["entries"] if entry["action"] == "cut")
+    cut["reasoning"] = f"Cut {cut['seg_id']} as idle"
+    h = await _user(api)
+    _video, run = await _run_awaiting_review(api, h, storage, edit_plan=plan)
+    uid, run_id = _uid(h), UUID(run)
+
+    view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()
+    assert all(not re.search(r"seg_\w+", change["reason"]) for change in view["changes"])
+    assert all(check["name"] != "reasons_plain" for check in view["proposal"]["checks"])
+
+    async with tenant_tx(uid) as conn:
+        run_ref = await lifecycle.load(conn, run_id)
+        assert run_ref is not None
+        await review.approve(conn, run_ref)
+    assert (await api.get(f"/runs/{run_id}", headers=h)).json()["status"] == "approved"
+
+
 async def test_chosen_fix_is_saved_and_returned_in_proposal_view(
     api: httpx.AsyncClient, storage: FakeStorage
 ) -> None:

@@ -169,3 +169,18 @@ def test_reasons_plain_targets_spot_writer_for_internal_copy() -> None:
 
     assert result.passed is False
     assert result.target == "spot_writer"
+
+
+def test_change_reason_with_an_internal_id_falls_back_to_plain_copy() -> None:
+    agent = _proposal()
+    entries = [
+        entry.model_copy(update={"action": "speed", "speed": 1.5, "reasoning": "seg_05 is slow"})
+        if entry.seg_id == "seg_05"
+        else entry
+        for entry in agent.edit_plan.entries
+    ]
+    agent = agent.model_copy(update={"edit_plan": agent.edit_plan.model_copy(update={"entries": entries})})
+
+    reason = {item.change_id: item.reason for item in changes(agent, agent)}["seg_05"]
+
+    assert reason == "A slow part was sped up."

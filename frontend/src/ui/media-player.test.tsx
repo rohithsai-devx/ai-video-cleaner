@@ -128,4 +128,24 @@ describe("MediaPlayer", () => {
     expect(video.currentTime).toBe(15);
     expect(screen.getByText("Hold applied when rendered")).toBeInTheDocument();
   });
+
+  it("seeks again when the same time is requested twice", () => {
+    const { rerender } = render(
+      <MediaPlayer src="/recording.mp4" duration={60} mode="file" seekTo={{ time: 12 }} />,
+    );
+    const video = screen.getByLabelText("Video player") as HTMLVideoElement;
+    setCurrentTime(video, 12);
+    rerender(<MediaPlayer src="/recording.mp4" duration={60} mode="file" seekTo={{ time: 12 }} />);
+    video.currentTime = 30;
+    rerender(<MediaPlayer src="/recording.mp4" duration={60} mode="file" seekTo={{ time: 12 }} />);
+    expect(video.currentTime).toBe(12);
+  });
+
+  it("uses the played file's own length once its metadata loads", () => {
+    render(<MediaPlayer src="/cleaned.mp4" duration={40} mode="file" />);
+    const video = screen.getByLabelText("Video player") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { configurable: true, value: 52 });
+    fireEvent.loadedMetadata(video);
+    expect(screen.getByRole("slider", { name: "Seek" })).toHaveAttribute("max", "52");
+  });
 });

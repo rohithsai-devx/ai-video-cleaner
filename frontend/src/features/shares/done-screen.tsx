@@ -25,7 +25,7 @@ export function DoneScreen({
 }) {
   const [version, setVersion] = useState<ShareKind>("cleaned");
   const [sourceTime, setSourceTime] = useState(0);
-  const [pendingSeek, setPendingSeek] = useState<number | undefined>();
+  const [pendingSeek, setPendingSeek] = useState<{ time: number } | undefined>();
   const queryClient = useQueryClient();
 
   const runId = video.current_run?.run_id;
@@ -78,7 +78,7 @@ export function DoneScreen({
 
   function selectVersion(next: ShareKind) {
     if (next === version) return;
-    setPendingSeek(next === "cleaned" ? toOutputTime(sourceTime, segments) : sourceTime);
+    setPendingSeek({ time: next === "cleaned" ? toOutputTime(sourceTime, segments) : sourceTime });
     setVersion(next);
   }
 
@@ -119,8 +119,8 @@ export function DoneScreen({
             value={version}
             onChange={(value) => selectVersion(value as ShareKind)}
             options={[
-              { value: "cleaned", label: `Cleaned · ${cleanedDurationText}` },
-              { value: "raw", label: `Original · ${originalDurationText}` },
+              { value: "cleaned", label: joinMeta("Cleaned", cleanedDurationText) },
+              { value: "raw", label: joinMeta("Original", originalDurationText) },
             ]}
           />
 
@@ -144,7 +144,7 @@ export function DoneScreen({
           <p className="m-0 text-sm leading-normal text-muted">
             {version === "cleaned"
               ? "Cleaned version: pauses and retakes are gone, slow parts play faster."
-              : "Original recording: the full recording with your own voice, exactly as recorded."}
+              : "The full recording with your own voice, exactly as recorded."}
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -187,7 +187,7 @@ export function DoneScreen({
 
           <ShareCard
             title="Cleaned video"
-            meta={`${cleanedDurationText} · ${voiceMeta}`}
+            meta={joinMeta(cleanedDurationText, voiceMeta)}
             url={cleanedLink?.url ?? null}
             onCreate={() => createShare("cleaned")}
             creating={createCleaned.isPending}
@@ -205,7 +205,7 @@ export function DoneScreen({
           {video.original_url ? (
             <ShareCard
               title="Original recording"
-              meta={`${originalDurationText} · your voice, uncut`}
+              meta={joinMeta(originalDurationText, "your voice, uncut")}
               url={rawLink?.url ?? null}
               onCreate={() => createShare("raw")}
               creating={createRaw.isPending}
@@ -256,8 +256,13 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
+/** Joins label parts with " · ", leaving out an unknown (empty) length. */
+function joinMeta(...parts: string[]): string {
+  return parts.filter(Boolean).join(" · ");
+}
+
 function formatDuration(seconds: number | null | undefined): string {
-  if (seconds == null) return "—";
+  if (seconds == null) return "";
   const roundedSeconds = Math.max(0, Math.round(seconds));
   return `${Math.floor(roundedSeconds / 60)}:${String(roundedSeconds % 60).padStart(2, "0")}`;
 }

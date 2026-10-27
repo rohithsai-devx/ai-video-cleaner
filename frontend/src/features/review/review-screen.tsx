@@ -23,6 +23,7 @@ import {
   applyFixToDraft,
   emptyDraft,
   effectiveEntries,
+  effectiveTexts,
   failedProposalChecks,
   failingChecks,
   flaggedRefIds,
@@ -30,6 +31,7 @@ import {
   isReviewable,
   outputLength,
   toUpdate,
+  withoutFixesOn,
   type Draft,
   type ProposalDoc,
 } from "./review-model";
@@ -40,6 +42,11 @@ import { NeedsYouPanel } from "./needs-you-panel";
 import { getPlaybackContext, usePlaybackFollow, type FollowTarget } from "./use-playback-follow";
 
 type ProposalChange = components["schemas"]["Change"];
+
+/** "AI voice (Coral)", or plain "AI voice" until the voice list loads. */
+function voiceLabel(name: string | undefined): string {
+  return name ? `AI voice (${name})` : "AI voice";
+}
 
 export function ReviewScreen({ id }: { id: string }) {
   const router = useRouter();
@@ -71,7 +78,7 @@ export function ReviewScreen({ id }: { id: string }) {
   const [failures, setFailures] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("needs-you");
   const [playhead, setPlayhead] = useState(0);
-  const [seekTo, setSeekTo] = useState<number>();
+  const [seekTo, setSeekTo] = useState<{ time: number }>();
   const [playerMode, setPlayerMode] = useState<"cleaned-preview" | "file">("cleaned-preview");
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -103,6 +110,7 @@ export function ReviewScreen({ id }: { id: string }) {
   const changes = (view.data?.changes ?? []) as unknown as ProposalChange[];
   const dirty = proposal ? isDirty(proposal, draft) : false;
   const entries = proposal ? effectiveEntries(proposal, draft) : [];
+  const texts = proposal ? effectiveTexts(proposal, draft) : {};
   const outputDuration = proposal ? outputLength(entries) : 0;
   const duration = video.data?.duration_s ?? outputDuration;
   const flagged = proposal ? failedProposalChecks(proposal) : [];
@@ -115,7 +123,7 @@ export function ReviewScreen({ id }: { id: string }) {
     "Someone else saved a newer version. Your edits were dropped and the latest version is loaded.";
   const narration =
     run.data?.voice === "ai"
-      ? `AI voice (${voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label ?? "AI voice"})`
+      ? voiceLabel(voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label)
       : "my voice";
   const chapters = (view.data?.chapters ?? []) as unknown as components["schemas"]["Chapter"][];
   const spots = useMemo(
@@ -199,7 +207,7 @@ export function ReviewScreen({ id }: { id: string }) {
     if (tab) setActiveTab(tab);
     setSelectedTimelineId(id);
     setPlayhead(time);
-    setSeekTo(time);
+    setSeekTo({ time });
   };
   const selectTimelineItem = (id: string) => {
     const target = followTargets.find((item) => item.id === id);
@@ -214,9 +222,10 @@ export function ReviewScreen({ id }: { id: string }) {
     setDraft((current) => applyFixToDraft(current, proposal, spot, fix));
   };
   const setChangeUndone = (change: (typeof changes)[number], type: "undo" | "redo") => {
+    if (!proposal) return;
     const current =
       draft.entryOverrides?.[change.change_id] ??
-      proposal?.edit_plan.entries.find((entry) => entry.seg_id === change.change_id);
+      proposal.edit_plan.entries.find((entry) => entry.seg_id === change.change_id);
     if (!current) return;
     const action =
       type === "undo"
@@ -224,7 +233,10 @@ export function ReviewScreen({ id }: { id: string }) {
         : ({ type: "redo", change, current } as const);
     const next = undoReducer(undoState, action);
     dispatchUndo(action);
-    setDraft((value) => ({ ...value, entryOverrides: next.entries }));
+    setDraft((value) => ({
+      ...withoutFixesOn(value, proposal, change.change_id),
+      entryOverrides: next.entries,
+    }));
   };
   const tabs: TabsProps = {
     label: "Review sections",
@@ -262,7 +274,7 @@ export function ReviewScreen({ id }: { id: string }) {
       script: (
         <ScriptPanel
           blocks={proposal?.script.blocks ?? []}
-          draftTexts={draft.texts}
+          draftTexts={texts}
           flaggedIds={flaggedIds}
           editable={editable}
           activeId={activeFollowId}
@@ -492,7 +504,7 @@ export function ReviewScreen({ id }: { id: string }) {
               selectedId={selectedId}
               onSeek={(time) => {
                 setPlayhead(time);
-                setSeekTo(time);
+                setSeekTo({ time });
               }}
               onSelect={selectTimelineItem}
             />

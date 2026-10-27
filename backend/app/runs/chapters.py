@@ -1,6 +1,7 @@
 """Pure chapter projection from the transcript analyst's ordered steps."""
 
 from app.contracts.pipeline import Chapter, Proposal, Step
+from app.runs.checks import plain_copy
 
 
 def chapters(proposal: Proposal) -> list[Chapter]:
@@ -11,7 +12,7 @@ def chapters_from_steps(steps: list[Step]) -> list[Chapter]:
     steps = sorted(steps, key=lambda step: step.span[0])
     return [
         Chapter(
-            title=step.title or " ".join(step.summary.split()[:4]),
+            title=plain_copy(step.title or " ".join(step.summary.split()[:4]), f"Part {index + 1}"),
             start=step.span[0],
             end=steps[index + 1].span[0] if index + 1 < len(steps) else step.span[1],
         )

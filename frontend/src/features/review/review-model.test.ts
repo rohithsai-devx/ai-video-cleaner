@@ -5,6 +5,7 @@ import {
   applyFixToDraft,
   conflictCode,
   effectiveEntries,
+  effectiveTexts,
   emptyDraft,
   failingChecks,
   flagHeading,
@@ -13,12 +14,15 @@ import {
   isReviewable,
   outputLength,
   toUpdate,
+  withoutFixesOn,
   type Entry,
   type ProposalDoc,
 } from "./review-model";
 
 type ProposalView = components["schemas"]["ProposalView"];
 const demoView = demo as unknown as ProposalView;
+const screen42 = (p: ProposalDoc, d: Parameters<typeof effectiveEntries>[1]) =>
+  effectiveEntries(p, d).find((e) => e.seg_id === "screen-42");
 
 const entry = (
   seg_id: string,
@@ -104,16 +108,49 @@ describe("review model", () => {
     const entryFix = narrationSpot.fixes[1]!;
 
     const textDraft = applyFixToDraft(emptyDraft, proposal, narrationSpot, textFix);
-    expect(textDraft.texts["block-create"]).toBe("Create the project.");
+    expect(effectiveTexts(proposal, textDraft)["block-create"]).toBe("Create the project.");
     expect(textDraft.chosenFixes?.[narrationSpot.spot_id]).toBe(textFix.fix_id);
 
     const entryDraft = applyFixToDraft(emptyDraft, proposal, narrationSpot, entryFix);
-    expect(entryDraft.entryOverrides?.["screen-42"]).toMatchObject({
+    expect(screen42(proposal, entryDraft)).toMatchObject({
       action: "freeze",
       speed: 1,
       freeze_s: 4,
     });
     expect(entryDraft.chosenFixes?.[narrationSpot.spot_id]).toBe(entryFix.fix_id);
+  });
+
+  it("keeps a chosen fix when an unrelated change is undone", () => {
+    const proposal = demoView.proposal as unknown as ProposalDoc;
+    const spot = demoView.spots[0]!;
+    const hold = applyFixToDraft(emptyDraft, proposal, spot, spot.fixes[1]!);
+    const other = proposal.edit_plan.entries.find((e) => e.action === "cut")!;
+    // what the screen does on undo: replace the undo map with the reducer's entries
+    const undone = {
+      ...withoutFixesOn(hold, proposal, other.seg_id),
+      entryOverrides: { [other.seg_id]: { ...other, action: "keep" as const } },
+    };
+    expect(screen42(proposal, undone)?.action).toBe("freeze");
+    expect(toUpdate(proposal, undone).chosen_fixes).toEqual({ [spot.spot_id]: "hold" });
+  });
+
+  it("replaces the earlier patch when a different fix is chosen", () => {
+    const proposal = demoView.proposal as unknown as ProposalDoc;
+    const spot = demoView.spots[0]!;
+    const hold = applyFixToDraft(emptyDraft, proposal, spot, spot.fixes[1]!);
+    const shorten = applyFixToDraft(hold, proposal, spot, spot.fixes[0]!);
+    expect(screen42(proposal, shorten)?.action).toBe("keep");
+    expect(effectiveTexts(proposal, shorten)["block-create"]).toBe("Create the project.");
+    const slow = applyFixToDraft(shorten, proposal, spot, spot.fixes[2]!);
+    expect(screen42(proposal, slow)).toMatchObject({ action: "speed", speed: 0.7 });
+    expect(effectiveTexts(proposal, slow)["block-create"]).not.toBe("Create the project.");
+  });
+
+  it("drops a draft fix when the user undoes the change on its segment", () => {
+    const proposal = demoView.proposal as unknown as ProposalDoc;
+    const spot = demoView.spots[0]!;
+    const hold = applyFixToDraft(emptyDraft, proposal, spot, spot.fixes[1]!);
+    expect(withoutFixesOn(hold, proposal, "screen-42").chosenFixes).toEqual({});
   });
 
   it("sends the version the edit was made on as base_version", () => {
@@ -137,6 +174,7 @@ describe("review model", () => {
 
   it("computes the output length", () => {
     expect(outputLength(base.edit_plan.entries)).toBe(22 + 10);
+    expect(outputLength([entry("h", "freeze", [0, 2], { freeze_s: 4 })])).toBe(6);
     expect(outputLength(effectiveEntries(base, { texts: {}, kept: { s1: true } }))).toBe(41);
   });
 

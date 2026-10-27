@@ -5,21 +5,12 @@ export type PlayerSegment = {
   end: number;
   kind: "removed" | "speed" | "hold";
   speed?: number;
+  /** Seconds the last frame of a hold is shown after the span plays. */
+  holdS?: number;
   label: string;
 };
 
-type ChangeContract = {
-  change_id: string;
-  kind: "pause" | "filler" | "retake" | "cut" | "speed" | "hold";
-  span: [number, number];
-  speed?: number | null;
-  hold_s?: number | null;
-  reason: string;
-  undone: boolean;
-};
-
-// BE-E adds this generated schema. Keep the contract shape available before that lands.
-type Change = components["schemas"] extends { Change: infer T } ? T : ChangeContract;
+type Change = components["schemas"]["Change"];
 
 function ordered(segs: PlayerSegment[]): PlayerSegment[] {
   return segs
@@ -31,6 +22,10 @@ function ordered(segs: PlayerSegment[]): PlayerSegment[] {
     )
     .slice()
     .sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function holdOf(segment: PlayerSegment): number {
+  return segment.holdS && Number.isFinite(segment.holdS) && segment.holdS > 0 ? segment.holdS : 0;
 }
 
 function rateOf(segment: PlayerSegment): number {
@@ -62,9 +57,9 @@ export function toOutputTime(t: number, segs: PlayerSegment[]): number {
       continue;
     }
 
-    // Holds mark a frame on the source timeline; C9 carries no separate hold duration.
+    // A hold plays its span, then shows the last frame for holdS more seconds.
     if (sourceTime < end) return outputCursor + sourceTime - start;
-    outputCursor += end - start;
+    outputCursor += end - start + holdOf(segment);
     sourceCursor = end;
   }
 
@@ -103,11 +98,14 @@ export function toSourceTime(t: number, segs: PlayerSegment[]): number {
       continue;
     }
 
-    const holdLength = end - start;
-    if (outputTime < outputCursor + holdLength) {
+    const spanLength = end - start;
+    if (outputTime < outputCursor + spanLength) {
       return start + outputTime - outputCursor;
     }
-    outputCursor += holdLength;
+    const holdLength = holdOf(segment);
+    // The held frame is the end of the span.
+    if (outputTime < outputCursor + spanLength + holdLength) return end;
+    outputCursor += spanLength + holdLength;
     sourceCursor = end;
   }
 
@@ -126,6 +124,7 @@ export function segmentsFromChanges(changes: Change[]): PlayerSegment[] {
       const kind = change.kind === "speed" ? "speed" : change.kind === "hold" ? "hold" : "removed";
       const segment: PlayerSegment = { start, end, kind, label: change.reason };
       if (kind === "speed" && change.speed != null) segment.speed = change.speed;
+      if (kind === "hold" && change.hold_s != null) segment.holdS = change.hold_s;
       return segment;
     });
 }

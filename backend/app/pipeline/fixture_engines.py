@@ -113,8 +113,14 @@ class FixtureEngines:
         return _proposal_for_options(fix_options or FixOptions())
 
     async def render(
-        self, run: RunRef, proposal: Proposal, output_uri: str, *, voice: VoiceMode = "original"
+        self,
+        run: RunRef,
+        proposal: Proposal,
+        output_uri: str,
+        *,
+        voice: VoiceMode = "original",
+        voice_id: str | None = None,
     ) -> None:
-        del voice  # the fixture copies the raw object in either voice mode
+        del voice, voice_id  # the fixture copies the raw object in either voice mode
         # The raw object stands in for the rendered video. The copy lands before the caller commits the row.
         await self._storage.copy(self._storage.raw_uri(run.video_id), output_uri)

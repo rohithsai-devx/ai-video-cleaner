@@ -182,19 +182,26 @@ class MediaEngines:
         )
 
     async def render(
-        self, run: RunRef, proposal: Proposal, output_uri: str, *, voice: VoiceMode = "original"
+        self,
+        run: RunRef,
+        proposal: Proposal,
+        output_uri: str,
+        *,
+        voice: VoiceMode = "original",
+        voice_id: str | None = None,
     ) -> None:
-        speaker = self._speech(run) if voice == "ai" else None
+        speaker = self._speech(run, voice_id) if voice == "ai" else None
         await media.render(self._storage, run, proposal, output_uri, voice=voice, speaker=speaker)
 
-    def _speech(self, run: RunRef) -> media.Speaker | None:
+    def _speech(self, run: RunRef, voice_id: str | None) -> media.Speaker | None:
         bundle = self._bundle
         if not isinstance(bundle, _CanSpeak):
             return None
 
         def speak(text: str) -> tuple[bytes, float]:
-            # ponytail: "" uses the configured speech voice; RunRef has no voice_id.
-            clip = bundle.synthesize(make_call(str(run.workspace_id), str(run.id), "voice"), text, "")
+            # the run's chosen voice; "" falls back to the configured speech voice
+            call = make_call(str(run.workspace_id), str(run.id), "voice")
+            clip = bundle.synthesize(call, text, voice_id or "")
             return clip.audio, clip.duration_s
 
         return speak

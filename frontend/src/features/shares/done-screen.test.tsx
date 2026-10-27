@@ -96,7 +96,7 @@ vi.mock("@/ui/media-player", () => ({
     src: string;
     duration: number;
     mode: string;
-    seekTo?: number;
+    seekTo?: { time: number };
     onTime?: (time: number) => void;
   }) => (
     <div
@@ -104,7 +104,7 @@ vi.mock("@/ui/media-player", () => ({
       data-src={props.src}
       data-duration={props.duration}
       data-mode={props.mode}
-      data-seek={props.seekTo ?? "unset"}
+      data-seek={props.seekTo?.time ?? "unset"}
     >
       <button onClick={() => props.onTime?.(60)}>Move player to one minute</button>
     </div>

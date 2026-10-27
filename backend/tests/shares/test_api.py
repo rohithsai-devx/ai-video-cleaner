@@ -36,8 +36,8 @@ async def test_share_creation_is_idempotent_and_list_is_newest_first(
     listed = await api.get(path, headers=h)
     assert listed.status_code == 200, listed.text
     links = listed.json()
-    assert [link["slug"] for link in links] == [active.json()["slug"], expired.json()["slug"]]
-    assert links[0]["created_at"] > links[1]["created_at"]
+    # expired links are left out: the UI shows the first link of each kind, and it must still work
+    assert [link["slug"] for link in links] == [active.json()["slug"]]
     assert all(link["kind"] == "cleaned" for link in links)
 
     other = await _user(api)

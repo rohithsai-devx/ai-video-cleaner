@@ -262,6 +262,7 @@ async def save_edit(conn: Conn, run: RunRef, update: ProposalUpdate) -> Proposal
         VOICE_WPS,
         fix_options,
         "user",
+        for_review=True,
     )
     new = old.model_copy(
         update={
@@ -337,6 +338,7 @@ async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> l
         VOICE_WPS,
         fix_options,
         "user" if open_spots else proposal.source,
+        for_review=True,
     )
     failed = next(
         (check for check in checks if not check.passed),

@@ -2,7 +2,7 @@
 
 import { FastForward, Pause, Play, Rewind } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import { formatClock } from "@/lib/clock";
+import { formatClock, formatRate } from "@/lib/clock";
 import { outputLength, toOutputTime, toSourceTime, type PlayerSegment } from "@/lib/cut-map";
 import { Button } from "./button";
 import { cx } from "./cx";
@@ -15,7 +15,8 @@ export type PlayerProps = {
   chapters?: { title: string; start: number }[];
   badge?: string;
   onTime?: (t: number) => void;
-  seekTo?: number;
+  /** A controlled seek in source time. Pass a new object per request, so the same time can seek twice. */
+  seekTo?: { time: number };
 };
 
 function clamp(value: number, maximum: number): number {
@@ -40,7 +41,7 @@ function speedAt(time: number, segments: PlayerSegment[]): PlayerSegment | undef
 
 export function MediaPlayer({
   src,
-  duration,
+  duration: givenDuration,
   mode,
   segments = [],
   chapters = [],
@@ -49,10 +50,17 @@ export function MediaPlayer({
   seekTo,
 }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const lastSeek = useRef<{ src: string; duration: number; time?: number }>({ src, duration });
+  const lastSeek = useRef<{ src: string; duration: number; request?: { time: number } }>({
+    src,
+    duration: givenDuration,
+  });
   const [sourceTime, setSourceTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [fileDuration, setFileDuration] = useState<{ src: string; seconds: number }>();
   const isCleanedPreview = mode === "cleaned-preview";
+  // A played file knows its own length; the given duration covers the time before metadata loads.
+  const duration =
+    mode === "file" && fileDuration?.src === src ? fileDuration.seconds : givenDuration;
   const displayDuration = isCleanedPreview ? outputLength(duration, segments) : duration;
   const displayTime = isCleanedPreview ? toOutputTime(sourceTime, segments) : sourceTime;
   const activeSpeed = isCleanedPreview ? speedAt(sourceTime, segments) : undefined;
@@ -114,12 +122,12 @@ export function MediaPlayer({
     if (
       lastSeek.current.src === src &&
       lastSeek.current.duration === duration &&
-      lastSeek.current.time === seekTo
+      lastSeek.current.request === seekTo
     ) {
       return;
     }
-    lastSeek.current = { src, duration, time: seekTo };
-    const time = clamp(seekTo, duration);
+    lastSeek.current = { src, duration, request: seekTo };
+    const time = clamp(seekTo.time, duration);
     if (videoRef.current) videoRef.current.currentTime = time;
     setSourceTime(time);
     onTime?.(time);
@@ -181,6 +189,10 @@ export function MediaPlayer({
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
+          onLoadedMetadata={(event) => {
+            const seconds = event.currentTarget.duration;
+            if (Number.isFinite(seconds) && seconds > 0) setFileDuration({ src, seconds });
+          }}
         />
         {badge ? (
           <span className="pointer-events-none absolute left-3 top-3 rounded-lg bg-ink/75 px-2.5 py-1 text-xs font-medium text-white">
@@ -189,7 +201,7 @@ export function MediaPlayer({
         ) : null}
         {activeSpeed?.speed ? (
           <span className="pointer-events-none absolute right-3 top-3 rounded-lg bg-accent-soft px-2.5 py-1 text-xs font-medium text-ink">
-            {activeSpeed.speed}×
+            {formatRate(activeSpeed.speed)}×
           </span>
         ) : null}
         {activeRemoved ? (

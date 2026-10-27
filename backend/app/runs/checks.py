@@ -224,6 +224,16 @@ def _contains_internal_copy(text: str) -> bool:
     return _INTERNAL_ID.search(text) is not None or any(name in folded for name in _CHECK_NAMES)
 
 
+# Checks that steer the agent only. The user cannot edit the text they judge, so review never shows
+# them and approve never blocks on them; the API swaps that text for plain copy instead (plain_copy).
+AGENT_ONLY_CHECKS = frozenset({"reasons_plain"})
+
+
+def plain_copy(text: str, fallback: str) -> str:
+    """Agent text for the viewer, or the fallback when it names an internal id or check."""
+    return fallback if not text.strip() or _contains_internal_copy(text) else text
+
+
 def _fix_options_check(
     transcript: TranscriptContext,
     plan: EditPlan | None,
@@ -302,9 +312,14 @@ def recheck(
     voice_wps: float,
     fix_options: FixOptions | None = None,
     source: ProposalSource = "agent",
+    *,
+    for_review: bool = False,
 ) -> list[CheckResult]:
-    """Recompute every check from the current proposal. Stale script checks are not kept."""
-    return [
+    """Recompute every check from the current proposal. Stale script checks are not kept.
+
+    ``for_review`` leaves out AGENT_ONLY_CHECKS: in review they would block a run the user cannot fix.
+    """
+    results = [
         length_fit(script, voice_wps),
         key_terms_kept(script, transcript.key_terms, words),
         coverage_order(script, segments),
@@ -315,6 +330,7 @@ def recheck(
         _fix_options_check(transcript, plan, segments, fix_options or FixOptions(), source),
         _plain_reasons(transcript, plan),
     ]
+    return [r for r in results if r.name not in AGENT_ONLY_CHECKS] if for_review else results
 
 
 def _script(name: str, problems: list[str], ref: str | None) -> CheckResult:

@@ -24,6 +24,7 @@ from app.auth.router import router as auth_router
 from app.contracts.events import RunFailedEvent
 from app.pipeline import relay, stages
 from app.pipeline.fixture_engines import FixtureEngines
+from app.pipeline.media import RecordingTooLong
 from app.pipeline.relay import Task
 from app.providers.errors import ProviderError
 from app.runs import lifecycle
@@ -431,8 +432,16 @@ class _Broken(FixtureEngines):
             raise self.failure
         return await super().propose(run, pre, **kwargs)
 
-    async def render(self, run: Any, proposal: Any, output_uri: str, *, voice: str = "original") -> None:
-        del voice
+    async def render(
+        self,
+        run: Any,
+        proposal: Any,
+        output_uri: str,
+        *,
+        voice: str = "original",
+        voice_id: str | None = None,
+    ) -> None:
+        del voice, voice_id
         if self.where == "render":
             raise self.failure
         await super().render(run, proposal, output_uri)
@@ -623,6 +632,21 @@ async def test_relay_queue_filter_leaves_preprocess_unsent(
     finally:
         await conn.close()
     assert row is not None and row["sent_at"] is None
+
+
+async def test_a_too_long_recording_fails_without_offering_a_retry(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "auto", storage)
+    engines = _Broken(storage, "render", RecordingTooLong(99_999.0))
+    events: list[Any] = []
+    for q in ("pre-cpu", "agent", "post-io"):
+        task = Task(task_id=db.task_id(run_id, q, 1), queue=q, run_id=run_id, workspace_id=ws, attempt=1)  # type: ignore[arg-type]
+        events = await stages.handle(task, engines, storage)
+    name, err = events[-1]
+    assert name == "run.failed" and err.retryable is False
+    assert err.message == "This recording is too long to clean."
 
 
 @pytest.mark.parametrize(

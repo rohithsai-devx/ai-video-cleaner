@@ -17,6 +17,7 @@ from app.contracts.pipeline import Proposal
 from app.runs import lifecycle, review
 from app.runs.changes import changes
 from app.runs.chapters import chapters
+from app.runs.checks import AGENT_ONLY_CHECKS
 from app.runs.schemas import (
     ApproveRequest,
     KeyframeThumb,
@@ -98,7 +99,10 @@ async def _view(
         if url
     ]
     return ProposalView(
-        proposal=proposal,
+        # agent-only checks are for the agent's own loop; the user cannot act on them
+        proposal=proposal.model_copy(
+            update={"checks": [c for c in proposal.checks if c.name not in AGENT_ONLY_CHECKS]}
+        ),
         keyframes=thumbs,
         changes=changes(agent_v1, proposal),
         spots=[

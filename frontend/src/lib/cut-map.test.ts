@@ -82,7 +82,19 @@ describe("cut map", () => {
     expect(segmentsFromChanges(changes)).toEqual([
       { start: 10, end: 20, kind: "removed", label: "A long pause was removed." },
       { start: 30, end: 50, kind: "speed", speed: 2, label: "A slow wait was sped up." },
-      { start: 80, end: 80, kind: "hold", label: "The last frame was held." },
+      { start: 80, end: 80, kind: "hold", holdS: 4, label: "The last frame was held." },
     ]);
+  });
+
+  it("adds a hold's seconds to the cleaned timeline and maps them to the held frame", () => {
+    const withHold = [
+      { start: 10, end: 20, kind: "removed" as const, label: "Pause removed" },
+      { start: 40, end: 42, kind: "hold" as const, holdS: 4, label: "Held" },
+    ];
+    expect(outputLength(100, withHold)).toBe(94);
+    expect(toOutputTime(41, withHold)).toBe(31);
+    expect(toOutputTime(50, withHold)).toBe(44);
+    expect(toSourceTime(33, withHold)).toBe(42);
+    expect(toSourceTime(44, withHold)).toBe(50);
   });
 });

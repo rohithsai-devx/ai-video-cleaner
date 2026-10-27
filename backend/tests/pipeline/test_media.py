@@ -739,6 +739,17 @@ def _engines(storage: GcsStorage, bundle: object) -> MediaEngines:
     return MediaEngines(storage, bundle=cast(Bundle, bundle))
 
 
+async def test_ai_render_speaks_in_the_runs_chosen_voice(monkeypatch: pytest.MonkeyPatch) -> None:
+    _quiet_render(monkeypatch, {})
+    storage = _Mem()
+    storage.objects[storage.mezz_uri(_RUN.id)] = b"mezz"
+    speech = _Clips({"alpha": (b"wav-alpha", 0.4), "beta": (b"wav-beta", 1.25)})
+    proposal = _two_blocks()
+    uri = storage.output_uri(_RUN.id, proposal.version)
+    await _engines(storage, speech).render(_RUN, proposal, uri, voice="ai", voice_id="sage")
+    assert speech.voice_id == "sage"
+
+
 async def test_ai_render_writes_each_block_and_fits_its_duration(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
     _quiet_render(monkeypatch, seen)

@@ -69,7 +69,7 @@ async def list_shares(video_id: UUID, user_id: CurrentUser) -> list[ShareLink]:
             raise not_found()
         cur = await conn.execute(
             "select slug, created_at, kind from shares where video_id = %s and visibility = 'link'"
-            " order by created_at desc",
+            " and (expires_at is null or expires_at > now()) order by created_at desc",
             (video_id,),
         )
         rows = await cur.fetchall()

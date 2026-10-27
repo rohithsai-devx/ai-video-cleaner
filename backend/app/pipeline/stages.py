@@ -44,11 +44,17 @@ _PROVIDER_MESSAGES = {
     False: "This step needs a service that isn't set up yet.",
 }
 _MEDIA_MESSAGE = "We couldn't read this recording's video or audio."
+_TOO_LONG_MESSAGE = "This recording is too long to clean."
 _DEFAULT_FAILURE_MESSAGE = "Something went wrong on our side. Trying again usually works."
 
 
 class MediaStageError(Exception):
     """A media engine failed; its underlying exception stays in logs, not the API message."""
+
+    def __init__(self, *, too_long: bool = False) -> None:
+        super().__init__()
+        self.too_long = too_long
+        self.retryable = not too_long  # a retry cannot shorten the recording
 
 
 @dataclass(frozen=True)
@@ -130,7 +136,7 @@ async def _fail(task: Task, exc: Exception) -> list[Event]:
     if isinstance(exc, ProviderError):
         message = _PROVIDER_MESSAGES[exc.retryable]
     elif isinstance(exc, MediaStageError):
-        message = _MEDIA_MESSAGE
+        message = _TOO_LONG_MESSAGE if exc.too_long else _MEDIA_MESSAGE
     else:
         message = _DEFAULT_FAILURE_MESSAGE
     err = RunFailedEvent(
@@ -159,6 +165,12 @@ async def _fail(task: Task, exc: Exception) -> list[Event]:
             return [*events, ("run.failed", err)]
     except Lost:
         return []  # someone else moved it first
+
+
+async def _voice_id(conn: Conn, run_id: UUID) -> str | None:
+    cur = await conn.execute("select voice_id from runs where id = %s", (run_id,))
+    row = await cur.fetchone()
+    return None if row is None else row["voice_id"]
 
 
 async def _voice(conn: Conn, run_id: UUID) -> VoiceMode:
@@ -200,7 +212,7 @@ async def _preprocess(task: Task, engines: Engines) -> list[Event]:
     try:
         pre = await engines.preprocess(run, raw_uri)
     except (OSError, RecordingTooLong, RuntimeError) as exc:
-        raise MediaStageError() from exc
+        raise MediaStageError(too_long=isinstance(exc, RecordingTooLong)) from exc
     async with worker_tx(task.workspace_id) as conn:
         run = await _still(conn, task, "preprocessing")
         if run is None:
@@ -289,6 +301,7 @@ async def _postprocess(task: Task, engines: Engines, storage: GcsStorage) -> lis
             return []
         proposal = await _latest_proposal(conn, run)
         voice = await _voice(conn, run.id)
+        voice_id = await _voice_id(conn, run.id)
         events: list[Event] = []
         if run.status == "approved":
             events = await lifecycle.advance(conn, run, "postprocessing", stage="render")
@@ -296,9 +309,9 @@ async def _postprocess(task: Task, engines: Engines, storage: GcsStorage) -> lis
     # Beat 2. Same rule as preprocess: render (ffmpeg) runs with no connection held.
     output_uri = storage.output_uri(run.id, proposal.version)
     try:
-        await engines.render(run, proposal, output_uri, voice=voice)
+        await engines.render(run, proposal, output_uri, voice=voice, voice_id=voice_id)
     except (OSError, RecordingTooLong, RuntimeError) as exc:
-        raise MediaStageError() from exc
+        raise MediaStageError(too_long=isinstance(exc, RecordingTooLong)) from exc
     async with worker_tx(task.workspace_id) as conn:
         run = await _still(conn, task, "postprocessing")
         if run is None:

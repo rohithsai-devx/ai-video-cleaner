@@ -16,3 +16,13 @@ export function formatSpan([start, end]: [number, number]): string {
 export function formatShorter(before: number, after: number): string {
   return `${formatClock(Math.max(0, before - after))} shorter`;
 }
+
+/** A playback rate for labels: at most one decimal, so a capped 1.7333 reads "1.7". */
+export function formatRate(rate: number): string {
+  return String(Number(rate.toFixed(1)));
+}
+
+/** A short span of seconds for labels, at most one decimal. */
+export function formatSeconds(seconds: number): string {
+  return String(Number(Math.max(0, seconds).toFixed(1)));
+}

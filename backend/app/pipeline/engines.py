@@ -47,5 +47,11 @@ class Engines(Protocol):
     ) -> AgentOutput: ...
 
     async def render(
-        self, run: RunRef, proposal: Proposal, output_uri: str, *, voice: VoiceMode = "original"
+        self,
+        run: RunRef,
+        proposal: Proposal,
+        output_uri: str,
+        *,
+        voice: VoiceMode = "original",
+        voice_id: str | None = None,
     ) -> None: ...

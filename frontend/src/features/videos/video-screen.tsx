@@ -32,6 +32,11 @@ export type ShareSlot = (video: {
   originalUrl?: string | null;
 }) => ReactNode;
 
+/** A new run can start from these statuses (the backend's start_run rule); ready opens via ?clean=1. */
+function canClean(status: components["schemas"]["Video"]["status"]): boolean {
+  return status === "uploaded" || status === "failed";
+}
+
 function originalShareStatus(
   status: components["schemas"]["Video"]["status"],
 ): components["schemas"]["Video"]["status"] | null {
@@ -231,9 +236,8 @@ export function VideoScreen({
                 Your recording is saved as it is. Cleaning makes a new version and never changes
                 this one.
               </p>
-              {v.status === "uploaded" ? (
-                <PastAttempts videoId={id} currentRunId={v.current_run?.run_id ?? null} />
-              ) : null}
+              {/* Every status lists attempts: it is the way back to a live, waiting or failed run. */}
+              <PastAttempts videoId={id} currentRunId={v.current_run?.run_id ?? null} />
               {v.original_url != null && shareStatus != null
                 ? renderShare?.({
                     videoId: id,
@@ -247,7 +251,7 @@ export function VideoScreen({
           )}
         </section>
 
-        {v && (v.status === "uploaded" || forceClean) ? (
+        {v && (canClean(v.status) || forceClean) ? (
           <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-6 rounded-3xl border border-line bg-surface p-7">
             <div className="flex flex-col gap-1.5">
               <h2 className="m-0 text-[28px] font-semibold">Clean this video</h2>

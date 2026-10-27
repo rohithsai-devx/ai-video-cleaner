@@ -1,5 +1,5 @@
 import type { components } from "@/api/generated/schema";
-import { formatClock } from "@/lib/clock";
+import { formatClock, formatRate, formatSeconds } from "@/lib/clock";
 import { Button } from "@/ui/button";
 
 type Change = components["schemas"]["Change"];
@@ -19,8 +19,8 @@ function changeLabel(change: Change): string {
   if (change.kind === "pause") return "Pause removed";
   if (change.kind === "filler") return "Filler word removed";
   if (change.kind === "retake") return "Retake removed";
-  if (change.kind === "speed") return `Sped up ${change.speed ?? 1}×`;
-  if (change.kind === "hold") return `Held last frame ${change.hold_s ?? 0} s`;
+  if (change.kind === "speed") return `Sped up ${formatRate(change.speed ?? 1)}×`;
+  if (change.kind === "hold") return `Held last frame ${formatSeconds(change.hold_s ?? 0)} s`;
   return "Cut";
 }
 

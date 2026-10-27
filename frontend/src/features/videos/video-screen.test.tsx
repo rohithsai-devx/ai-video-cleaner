@@ -119,6 +119,20 @@ describe("VideoScreen start run", () => {
     expect(screen.getByRole("button", { name: "Clean this video" })).toBeEnabled();
   });
 
+  it("lets a failed video start a new run", () => {
+    mock.video.status = "failed";
+    renderScreen();
+    expect(screen.getByRole("heading", { name: "Clean this video" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clean this video" }));
+    expect(mock.mutate).toHaveBeenCalledOnce();
+  });
+
+  it.each(["processing", "awaiting_review"])("hides the clean panel while %s", (videoStatus) => {
+    mock.video.status = videoStatus;
+    renderScreen();
+    expect(screen.queryByRole("heading", { name: "Clean this video" })).not.toBeInTheDocument();
+  });
+
   it("sends unchecked fix options with the run request", () => {
     renderScreen();
     fireEvent.click(screen.getByRole("checkbox", { name: "Remove filler words" }));

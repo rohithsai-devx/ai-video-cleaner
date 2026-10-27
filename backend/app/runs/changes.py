@@ -1,6 +1,16 @@
 """Pure projection of the agent's original edits and whether the latest version undid them."""
 
 from app.contracts.pipeline import Change, Proposal
+from app.runs.checks import plain_copy
+
+_FALLBACK = {
+    "pause": "A long pause was removed.",
+    "filler": "A filler word was removed.",
+    "retake": "A retake was removed.",
+    "cut": "This part was cut.",
+    "speed": "A slow part was sped up.",
+    "hold": "The last frame was held.",
+}
 
 
 def changes(agent_v1: Proposal, latest: Proposal) -> list[Change]:
@@ -43,7 +53,10 @@ def changes(agent_v1: Proposal, latest: Proposal) -> list[Change]:
                 span=entry.src,
                 speed=entry.speed if kind == "speed" else None,
                 hold_s=entry.freeze_s if kind == "hold" else None,
-                reason=overlapping_drop.reason if overlapping_drop is not None else entry.reasoning,
+                reason=plain_copy(
+                    overlapping_drop.reason if overlapping_drop is not None else entry.reasoning,
+                    _FALLBACK[kind],
+                ),
                 undone=current is not None and current.action == "keep" and current.freeze_s == 0,
             )
         )
