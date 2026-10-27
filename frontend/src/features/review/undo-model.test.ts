@@ -85,4 +85,12 @@ describe("undo model", () => {
     expect(Object.keys(state.entries)).toEqual([current.seg_id]);
     expect(state.entries[current.seg_id]?.action).toBe("keep");
   });
+
+  it("drops a stale redo snapshot when a needs-you fix replaces that entry", () => {
+    const original = entry("pause-segment", "cut");
+    const undone = undoReducer(initialUndoState, { type: "undo", change, current: original });
+    const changed = undoReducer(undone, { type: "forget", changeId: change.change_id });
+    expect(changed.entries[change.change_id]?.action).toBe("keep");
+    expect(changed.redoEntries).toEqual({});
+  });
 });

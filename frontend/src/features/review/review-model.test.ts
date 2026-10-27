@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import demo from "../../../e2e/fixtures/proposal-demo.json";
+import type { components } from "@/api/generated/schema";
 import {
+  applyFixToDraft,
   conflictCode,
   effectiveEntries,
+  emptyDraft,
   failingChecks,
   flagHeading,
   flaggedRefIds,
@@ -12,6 +16,9 @@ import {
   type Entry,
   type ProposalDoc,
 } from "./review-model";
+
+type ProposalView = components["schemas"]["ProposalView"];
+const demoView = demo as unknown as ProposalView;
 
 const entry = (
   seg_id: string,
@@ -82,6 +89,31 @@ describe("review model", () => {
     expect(outputLength(effectiveEntries(base, draft))).toBe(41);
     expect(toUpdate(base, draft).edit_plan.entries[0]).toEqual(undone);
     expect(isDirty(base, draft)).toBe(true);
+  });
+
+  it("marks a fix choice dirty and sends it with the next proposal save", () => {
+    const draft = { texts: {}, kept: {}, chosenFixes: { "spot-1": "fix-2" } };
+    expect(isDirty(base, draft)).toBe(true);
+    expect(toUpdate(base, draft).chosen_fixes).toEqual({ "spot-1": "fix-2" });
+  });
+
+  it("applies block and EDL fix patches to the review draft", () => {
+    const proposal = demoView.proposal as unknown as ProposalDoc;
+    const narrationSpot = demoView.spots[0]!;
+    const textFix = narrationSpot.fixes[0]!;
+    const entryFix = narrationSpot.fixes[1]!;
+
+    const textDraft = applyFixToDraft(emptyDraft, proposal, narrationSpot, textFix);
+    expect(textDraft.texts["block-create"]).toBe("Create the project.");
+    expect(textDraft.chosenFixes?.[narrationSpot.spot_id]).toBe(textFix.fix_id);
+
+    const entryDraft = applyFixToDraft(emptyDraft, proposal, narrationSpot, entryFix);
+    expect(entryDraft.entryOverrides?.["screen-42"]).toMatchObject({
+      action: "freeze",
+      speed: 1,
+      freeze_s: 4,
+    });
+    expect(entryDraft.chosenFixes?.[narrationSpot.spot_id]).toBe(entryFix.fix_id);
   });
 
   it("sends the version the edit was made on as base_version", () => {

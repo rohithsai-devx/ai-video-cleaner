@@ -5,14 +5,50 @@ export type ProposalDoc = S["Proposal"];
 export type Entry = S["EDLEntry"];
 export type Check = S["CheckResult"];
 export type ProposalUpdate = S["ProposalUpdate"];
+type Spot = S["Spot"];
+type Fix = S["Fix"];
 
 /** Local edits on top of a saved proposal: block texts and the cut segments flipped back to keep. */
 export type Draft = {
   texts: Record<string, string>;
   kept: Record<string, boolean>;
   entryOverrides?: Record<string, Entry>;
+  chosenFixes?: Record<string, string>;
 };
-export const emptyDraft: Draft = { texts: {}, kept: {}, entryOverrides: {} };
+export const emptyDraft: Draft = {
+  texts: {},
+  kept: {},
+  entryOverrides: {},
+  chosenFixes: {},
+};
+
+export function applyFixToDraft(draft: Draft, base: ProposalDoc, spot: Spot, fix: Fix): Draft {
+  const next: Draft = {
+    ...draft,
+    chosenFixes: { ...draft.chosenFixes, [spot.spot_id]: fix.fix_id },
+  };
+  const blockPatch = fix.patch.block;
+  if (blockPatch) {
+    return {
+      ...next,
+      texts: { ...draft.texts, [blockPatch.block_id]: blockPatch.text },
+    };
+  }
+
+  const entryPatch = fix.patch.entry;
+  if (!entryPatch) return next;
+  const original =
+    draft.entryOverrides?.[entryPatch.seg_id] ??
+    base.edit_plan.entries.find((entry) => entry.seg_id === entryPatch.seg_id);
+  if (!original) return next;
+  return {
+    ...next,
+    entryOverrides: {
+      ...draft.entryOverrides,
+      [entryPatch.seg_id]: { ...original, ...entryPatch },
+    },
+  };
+}
 
 function sameEntry(left: Entry, right: Entry): boolean {
   return (
@@ -34,7 +70,11 @@ export function isDirty(base: ProposalDoc, draft: Draft): boolean {
     const override = draft.entryOverrides?.[entry.seg_id];
     return override !== undefined && !sameEntry(entry, override);
   });
-  return textChanged || flipped || entryChanged;
+  const fixChanged = Object.entries(draft.chosenFixes ?? {}).some(([spotId, fixId]) => {
+    const original = base.spots?.find((spot) => spot.spot_id === spotId)?.chosen_fix_id;
+    return original !== fixId;
+  });
+  return textChanged || flipped || entryChanged || fixChanged;
 }
 
 export function effectiveEntries(base: ProposalDoc, draft: Draft): Entry[] {
@@ -49,6 +89,7 @@ export function effectiveEntries(base: ProposalDoc, draft: Draft): Entry[] {
 
 /** The PUT body: the saved proposal with only the user's allowed edits applied, on its version. */
 export function toUpdate(base: ProposalDoc, draft: Draft): ProposalUpdate {
+  const chosenFixes = draft.chosenFixes ?? {};
   return {
     base_version: base.version,
     script: {
@@ -57,6 +98,7 @@ export function toUpdate(base: ProposalDoc, draft: Draft): ProposalUpdate {
     },
     edit_plan: { ...base.edit_plan, entries: effectiveEntries(base, draft) },
     seg_contexts: base.seg_contexts,
+    ...(Object.keys(chosenFixes).length > 0 ? { chosen_fixes: chosenFixes } : {}),
   };
 }
 

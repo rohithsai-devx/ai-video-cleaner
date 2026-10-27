@@ -11,6 +11,7 @@ export type UndoState = {
 export type UndoAction =
   | { type: "undo"; change: Change; current: Entry }
   | { type: "redo"; change: Change; current: Entry }
+  | { type: "forget"; changeId: string }
   | { type: "reset" };
 
 export const initialUndoState: UndoState = { entries: {}, redoEntries: {} };
@@ -40,6 +41,11 @@ function restoreChange(change: Change, current: Entry): Entry {
 
 export function undoReducer(state: UndoState, action: UndoAction): UndoState {
   if (action.type === "reset") return initialUndoState;
+  if (action.type === "forget") {
+    const redoEntries = { ...state.redoEntries };
+    delete redoEntries[action.changeId];
+    return { ...state, redoEntries };
+  }
 
   const id = action.change.change_id;
   if (action.type === "undo") {

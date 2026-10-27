@@ -19,6 +19,7 @@ import { Timeline } from "@/ui/timeline";
 import { DoneByAiPanel } from "./done-by-ai-panel";
 import {
   conflictCode,
+  applyFixToDraft,
   emptyDraft,
   effectiveEntries,
   failedProposalChecks,
@@ -34,6 +35,7 @@ import {
 import { ScriptPanel } from "./script-panel";
 import { initialUndoState, undoReducer } from "./undo-model";
 import { buildReviewTracks, playerSegmentsFromEntries } from "./review-track-model";
+import { NeedsYouPanel } from "./needs-you-panel";
 
 type ProposalChange = components["schemas"]["Change"];
 
@@ -126,6 +128,16 @@ export function ReviewScreen({ id }: { id: string }) {
     scriptLines,
     waveform: waveform.data ?? null,
   });
+  const openSpotCount = spots.filter(
+    (spot) => !spot.chosen_fix_id && !draft.chosenFixes?.[spot.spot_id],
+  ).length;
+  const chooseFix = (spot: components["schemas"]["Spot"], fix: components["schemas"]["Fix"]) => {
+    if (!proposal) return;
+    if (fix.patch.entry) {
+      dispatchUndo({ type: "forget", changeId: fix.patch.entry.seg_id });
+    }
+    setDraft((current) => applyFixToDraft(current, proposal, spot, fix));
+  };
   const setChangeUndone = (change: (typeof changes)[number], type: "undo" | "redo") => {
     const current =
       draft.entryOverrides?.[change.change_id] ??
@@ -142,14 +154,23 @@ export function ReviewScreen({ id }: { id: string }) {
   const tabs: TabsProps = {
     label: "Review sections",
     tabs: [
-      { id: "needs-you", label: "Needs you" },
+      { id: "needs-you", label: "Needs you", count: openSpotCount },
       { id: "done-by-ai", label: "Done by AI", count: changes.length },
       { id: "script", label: "Script" },
     ],
     value: activeTab,
     onChange: setActiveTab,
     children: {
-      "needs-you": <Skeleton className="h-32 w-full" />,
+      "needs-you": (
+        <NeedsYouPanel
+          spots={spots}
+          chapters={chapters}
+          chosenFixes={draft.chosenFixes ?? {}}
+          editable={editable}
+          playhead={playhead}
+          onChooseFix={chooseFix}
+        />
+      ),
       "done-by-ai": (
         <DoneByAiPanel
           changes={changes}
@@ -244,7 +265,13 @@ export function ReviewScreen({ id }: { id: string }) {
             {formatClock(duration)} → {formatClock(outputDuration)}
           </span>
         )}
-        <Badge tone="success">All decided</Badge>
+        <Badge tone={openSpotCount > 0 ? "warning" : "success"}>
+          {openSpotCount === 0
+            ? "All decided"
+            : openSpotCount === 1
+              ? "1 needs you"
+              : `${openSpotCount} need you`}
+        </Badge>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {editable && (
             <>
