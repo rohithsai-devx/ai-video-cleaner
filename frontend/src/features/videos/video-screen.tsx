@@ -9,10 +9,17 @@ import { $api } from "@/api/client";
 import type { components } from "@/api/generated/schema";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 import { SegmentedControl } from "@/ui/segmented-control";
 import { Skeleton } from "@/ui/skeleton";
 import { Switch } from "@/ui/switch";
-import { runRequestBody, type Mode, type Voice } from "./run-request";
+import {
+  DEFAULT_FIX_OPTIONS,
+  runRequestBody,
+  type FixOptions,
+  type Mode,
+  type Voice,
+} from "./run-request";
 import { formatDuration } from "./video-status";
 
 export type ShareSlot = (video: {
@@ -28,6 +35,25 @@ const NARRATION = {
   ai: "The AI writes a clean script from what you said and reads it out. You can edit every line first.",
 } as const;
 
+const FIX_OPTION_ROWS: { key: keyof FixOptions; label: string; hint: string }[] = [
+  {
+    key: "pauses",
+    label: "Remove long pauses",
+    hint: "Silences over a second, while nothing changes on screen",
+  },
+  { key: "filler", label: "Remove filler words", hint: "um, uh, so, you know" },
+  {
+    key: "retakes",
+    label: "Remove retakes",
+    hint: "When you restart a sentence, it keeps the last try",
+  },
+  {
+    key: "slow_parts",
+    label: "Speed up slow parts",
+    hint: "Page loads and long waits play faster",
+  },
+];
+
 export function VideoScreen({ id, renderShare }: { id: string; renderShare?: ShareSlot }) {
   const router = useRouter();
   const video = $api.useQuery("get", "/videos/{video_id}", { params: { path: { video_id: id } } });
@@ -35,6 +61,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
   const [mode, setMode] = useState<Mode>("review");
   const [voice, setVoice] = useState<Voice>("original");
   const [voiceId, setVoiceId] = useState("default");
+  const [fixOptions, setFixOptions] = useState<FixOptions>(() => ({ ...DEFAULT_FIX_OPTIONS }));
   const [failedPlaybackUrl, setFailedPlaybackUrl] = useState<string | null>(null);
 
   const v = video.data;
@@ -50,7 +77,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
     start.mutate(
       {
         params: { path: { video_id: id } },
-        body: runRequestBody({ mode, voice, voiceId }),
+        body: runRequestBody({ mode, voice, voiceId, fixOptions }),
       },
       {
         onSuccess: (run) => {
@@ -171,6 +198,22 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
               <p className="m-0 text-[13px] font-medium uppercase tracking-wide text-muted">
                 The AI will
               </p>
+              {FIX_OPTION_ROWS.map((option) => (
+                <Checkbox
+                  key={option.key}
+                  name={option.key}
+                  label={option.label}
+                  hint={option.hint}
+                  checked={fixOptions[option.key]}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    setFixOptions((current) => ({
+                      ...current,
+                      [option.key]: checked,
+                    }));
+                  }}
+                />
+              ))}
             </div>
 
             <div className="flex flex-col gap-2">

@@ -89,6 +89,19 @@ describe("VideoScreen start run", () => {
     expect(mock.mutate.mock.calls[0][0].body.mode).toBe("auto");
   });
 
+  it("sends unchecked fix options with the run request", () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Remove filler words" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clean this video" }));
+
+    expect(mock.mutate.mock.calls[0][0].body.fix_options).toEqual({
+      pauses: true,
+      filler: false,
+      retakes: true,
+      slow_parts: true,
+    });
+  });
+
   it("sends the selected voice as voice_id", () => {
     renderScreen();
     fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
@@ -100,6 +113,7 @@ describe("VideoScreen start run", () => {
       mode: "review",
       voice: "ai",
       voice_id: select.value,
+      fix_options: { pauses: true, filler: true, retakes: true, slow_parts: true },
     });
   });
 
@@ -109,6 +123,7 @@ describe("VideoScreen start run", () => {
     expect(mock.mutate.mock.calls[0][0].body).toEqual({
       mode: "review",
       voice: "original",
+      fix_options: { pauses: true, filler: true, retakes: true, slow_parts: true },
     });
   });
 
