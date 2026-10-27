@@ -4,8 +4,9 @@ import { CaretLeft, WarningCircle } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { $api, fetchClient } from "@/api/client";
+import type { components } from "@/api/generated/schema";
 import { formatClock } from "@/lib/clock";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -14,6 +15,7 @@ import { Skeleton } from "@/ui/skeleton";
 import { Tabs, type TabsProps } from "@/ui/tabs";
 import { MediaPlayer } from "@/ui/media-player";
 import { Timeline } from "@/ui/timeline";
+import { DoneByAiPanel } from "./done-by-ai-panel";
 import {
   conflictCode,
   emptyDraft,
@@ -29,6 +31,9 @@ import {
   type ProposalDoc,
 } from "./review-model";
 import { ScriptPanel } from "./script-panel";
+import { initialUndoState, undoReducer } from "./undo-model";
+
+type ProposalChange = components["schemas"]["Change"];
 
 export function ReviewScreen({ id }: { id: string }) {
   const router = useRouter();
@@ -44,6 +49,7 @@ export function ReviewScreen({ id }: { id: string }) {
   );
   const voices = $api.useQuery("get", "/voices", {}, { enabled: run.data?.voice === "ai" });
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [undoState, dispatchUndo] = useReducer(undoReducer, initialUndoState);
   const [notice, setNotice] = useState<string | null>(null);
   const [failures, setFailures] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("needs-you");
@@ -74,6 +80,7 @@ export function ReviewScreen({ id }: { id: string }) {
 
   // The generated response type loosens tuples to number[]; the shapes are identical.
   const proposal = view.data?.proposal as ProposalDoc | undefined;
+  const changes = (view.data?.changes ?? []) as unknown as ProposalChange[];
   const dirty = proposal ? isDirty(proposal, draft) : false;
   const entries = proposal ? effectiveEntries(proposal, draft) : [];
   const outputDuration = proposal ? outputLength(entries) : 0;
@@ -90,18 +97,39 @@ export function ReviewScreen({ id }: { id: string }) {
     run.data?.voice === "ai"
       ? `AI voice (${voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label ?? "AI voice"})`
       : "my voice";
+  const setChangeUndone = (change: (typeof changes)[number], type: "undo" | "redo") => {
+    const current =
+      draft.entryOverrides?.[change.change_id] ??
+      proposal?.edit_plan.entries.find((entry) => entry.seg_id === change.change_id);
+    if (!current) return;
+    const action =
+      type === "undo"
+        ? ({ type: "undo", change, current } as const)
+        : ({ type: "redo", change, current } as const);
+    const next = undoReducer(undoState, action);
+    dispatchUndo(action);
+    setDraft((value) => ({ ...value, entryOverrides: next.entries }));
+  };
   const tabs: TabsProps = {
     label: "Review sections",
     tabs: [
       { id: "needs-you", label: "Needs you" },
-      { id: "done-by-ai", label: "Done by AI" },
+      { id: "done-by-ai", label: "Done by AI", count: changes.length },
       { id: "script", label: "Script" },
     ],
     value: activeTab,
     onChange: setActiveTab,
     children: {
       "needs-you": <Skeleton className="h-32 w-full" />,
-      "done-by-ai": <Skeleton className="h-32 w-full" />,
+      "done-by-ai": (
+        <DoneByAiPanel
+          changes={changes}
+          entries={entries}
+          editable={editable}
+          onUndo={(change) => setChangeUndone(change, "undo")}
+          onRedo={(change) => setChangeUndone(change, "redo")}
+        />
+      ),
       script: (
         <ScriptPanel
           blocks={proposal?.script.blocks ?? []}
@@ -127,9 +155,11 @@ export function ReviewScreen({ id }: { id: string }) {
     if (r?.data) {
       queryClient.setQueryData(proposalKey, r.data as unknown as typeof view.data);
       setDraft(emptyDraft);
+      dispatchUndo({ type: "reset" });
       setNotice(`Saved as version ${r.data.proposal.version}.`);
     } else if (r?.status === 409 && conflictCode(r.error?.detail) === "version_conflict") {
       setDraft(emptyDraft);
+      dispatchUndo({ type: "reset" });
       setNotice(NEWER_VERSION);
       await queryClient.invalidateQueries({ queryKey: proposalKey });
     } else if (r?.status === 409 && conflictCode(r.error?.detail) === "not_awaiting_review") {
@@ -150,6 +180,7 @@ export function ReviewScreen({ id }: { id: string }) {
     if (r && r.status === 202) router.push(`/runs/${id}`);
     else if (code === "version_conflict") {
       setDraft(emptyDraft);
+      dispatchUndo({ type: "reset" });
       setNotice(NEWER_VERSION);
       await queryClient.invalidateQueries({ queryKey: proposalKey });
     } else if (code === "not_awaiting_review") {

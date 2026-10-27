@@ -74,6 +74,16 @@ describe("review model", () => {
     expect(body.script.blocks[0]).toEqual({ ...base.script.blocks[0], text: "Hi" });
   });
 
+  it("recomputes output length from an explicit undo entry and persists that entry", () => {
+    const original = base.edit_plan.entries[0];
+    const undone = { ...original, action: "keep" as const, speed: 1, freeze_s: 0 };
+    const draft = { texts: {}, kept: {}, entryOverrides: { [original.seg_id]: undone } };
+
+    expect(outputLength(effectiveEntries(base, draft))).toBe(41);
+    expect(toUpdate(base, draft).edit_plan.entries[0]).toEqual(undone);
+    expect(isDirty(base, draft)).toBe(true);
+  });
+
   it("sends the version the edit was made on as base_version", () => {
     expect(toUpdate(base, { texts: {}, kept: {} }).base_version).toBe(base.version);
   });

@@ -7,23 +7,44 @@ export type Check = S["CheckResult"];
 export type ProposalUpdate = S["ProposalUpdate"];
 
 /** Local edits on top of a saved proposal: block texts and the cut segments flipped back to keep. */
-export type Draft = { texts: Record<string, string>; kept: Record<string, boolean> };
-export const emptyDraft: Draft = { texts: {}, kept: {} };
+export type Draft = {
+  texts: Record<string, string>;
+  kept: Record<string, boolean>;
+  entryOverrides?: Record<string, Entry>;
+};
+export const emptyDraft: Draft = { texts: {}, kept: {}, entryOverrides: {} };
+
+function sameEntry(left: Entry, right: Entry): boolean {
+  return (
+    left.seg_id === right.seg_id &&
+    left.action === right.action &&
+    left.speed === right.speed &&
+    left.freeze_s === right.freeze_s &&
+    left.src[0] === right.src[0] &&
+    left.src[1] === right.src[1]
+  );
+}
 
 export function isDirty(base: ProposalDoc, draft: Draft): boolean {
   const textChanged = base.script.blocks.some(
     (b) => draft.texts[b.block_id] !== undefined && draft.texts[b.block_id] !== b.text,
   );
   const flipped = base.edit_plan.entries.some((e) => e.action === "cut" && draft.kept[e.seg_id]);
-  return textChanged || flipped;
+  const entryChanged = base.edit_plan.entries.some((entry) => {
+    const override = draft.entryOverrides?.[entry.seg_id];
+    return override !== undefined && !sameEntry(entry, override);
+  });
+  return textChanged || flipped || entryChanged;
 }
 
 export function effectiveEntries(base: ProposalDoc, draft: Draft): Entry[] {
-  return base.edit_plan.entries.map((e) =>
-    e.action === "cut" && draft.kept[e.seg_id]
-      ? { ...e, action: "keep", speed: 1, freeze_s: 0 }
-      : e,
-  );
+  return base.edit_plan.entries.map((entry) => {
+    const override = draft.entryOverrides?.[entry.seg_id];
+    if (override) return override;
+    return entry.action === "cut" && draft.kept[entry.seg_id]
+      ? { ...entry, action: "keep", speed: 1, freeze_s: 0 }
+      : entry;
+  });
 }
 
 /** The PUT body: the saved proposal with only the user's allowed edits applied, on its version. */
