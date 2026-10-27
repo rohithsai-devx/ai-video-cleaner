@@ -2,6 +2,7 @@
 
 import ast
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -26,6 +27,7 @@ from app.contracts.pipeline import (
     TranscriptContext,
     Word,
 )
+from app.pipeline import media_engines as media_engines_module
 from app.pipeline.engines import AgentOutput
 from app.pipeline.media_engines import MediaEngines
 from app.runs.checks import edl_valid
@@ -472,3 +474,25 @@ async def test_propose_returns_a_plan_the_edit_check_accepts() -> None:
     assert edl_valid(out.edit_plan, out.seg_contexts, pre.duration).passed is True
     assert next(check for check in out.checks if check.name == "clean_only").passed is True
     assert json.loads(bundle.messages[-1][1]["content"])["allowed"]["speed"] is False
+
+
+async def test_propose_uses_fresh_checkpoint_threads_per_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saver = checkpointer()
+    monkeypatch.setattr(media_engines_module, "checkpointer", lambda: saver)
+    pre = clip()
+    storage = GcsStorage(bucket="b", emulator_host="localhost:9")
+
+    for attempt in (1, 2):
+        bundle = Scripted(script=good_script(pre), plan=good_plan(pre), p_yes=0.7)
+        await MediaEngines(storage, bundle=bundle).propose(
+            replace(REF, attempt=attempt), pre, voice="ai", fix_options=FixOptions(slow_parts=False)
+        )
+
+    threads = {
+        configurable["thread_id"]
+        for item in saver.list(None)
+        if (configurable := item.config.get("configurable")) is not None
+    }
+    assert threads == {f"{REF.id}:1", f"{REF.id}:2"}

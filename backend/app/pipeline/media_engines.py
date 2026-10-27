@@ -33,7 +33,7 @@ def _propose(
         build_graph(checkpointer()),
         initial_state(run, pre, voice=voice, fix_options=fix_options),
         bundle,
-        thread_id=str(run.id),
+        thread_id=f"{run.id}:{run.attempt}",
         workspace_id=str(run.workspace_id),
     )
     return to_output(raw)
