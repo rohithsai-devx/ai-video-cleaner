@@ -4,12 +4,13 @@ import { CaretLeft, Sparkle } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { $api } from "@/api/client";
 import type { components } from "@/api/generated/schema";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
+import { RadioGroup } from "@/ui/radio-group";
 import { SegmentedControl } from "@/ui/segmented-control";
 import { Skeleton } from "@/ui/skeleton";
 import { Switch } from "@/ui/switch";
@@ -56,15 +57,24 @@ const FIX_OPTION_ROWS: { key: keyof FixOptions; label: string; hint: string }[] 
 
 export function VideoScreen({ id, renderShare }: { id: string; renderShare?: ShareSlot }) {
   const router = useRouter();
-  const video = $api.useQuery("get", "/videos/{video_id}", { params: { path: { video_id: id } } });
-  const start = $api.useMutation("post", "/videos/{video_id}/runs");
   const [mode, setMode] = useState<Mode>("review");
   const [voice, setVoice] = useState<Voice>("original");
-  const [voiceId, setVoiceId] = useState("default");
+  const [voiceId, setVoiceId] = useState("");
   const [fixOptions, setFixOptions] = useState<FixOptions>(() => ({ ...DEFAULT_FIX_OPTIONS }));
   const [failedPlaybackUrl, setFailedPlaybackUrl] = useState<string | null>(null);
+  const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const video = $api.useQuery("get", "/videos/{video_id}", { params: { path: { video_id: id } } });
+  const voiceList = $api.useQuery("get", "/voices", undefined, { enabled: voice === "ai" });
+  const start = $api.useMutation("post", "/videos/{video_id}/runs");
 
   const v = video.data;
+  const voices = voiceList.data?.voices ?? [];
+  const selectedVoiceId = voices.some((item) => item.id === voiceId)
+    ? voiceId
+    : (voiceList.data?.default_voice_id ?? "");
+  const activeSample = voices.find((item) => item.id === playingSampleId);
   const sourceUrl = v
     ? v.status === "ready"
       ? v.playback_url
@@ -73,11 +83,24 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
 
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !activeSample) return;
+    audio.src = activeSample.sample_path;
+    audio.load();
+    void audio.play().catch(() => setPlayingSampleId(null));
+    return () => audio.pause();
+  }, [activeSample]);
+
+  function toggleSample(voiceOptionId: string) {
+    setPlayingSampleId((current) => (current === voiceOptionId ? null : voiceOptionId));
+  }
+
   function submit() {
     start.mutate(
       {
         params: { path: { video_id: id } },
-        body: runRequestBody({ mode, voice, voiceId, fixOptions }),
+        body: runRequestBody({ mode, voice, voiceId: selectedVoiceId, fixOptions }),
       },
       {
         onSuccess: (run) => {
@@ -232,19 +255,40 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
               />
               <p className="m-0 text-[13px] leading-normal text-muted">{NARRATION[voice]}</p>
               {voice === "ai" ? (
-                <>
-                  <label htmlFor="voice-id" className="text-[13px] text-ink/80">
-                    Workspace voice
-                  </label>
-                  <select
-                    id="voice-id"
-                    value={voiceId}
-                    onChange={(e) => setVoiceId(e.target.value)}
-                    className="h-11 rounded-xl border border-line-strong bg-white px-2.5 text-sm text-ink"
-                  >
-                    <option value="default">Default narrator</option>
-                  </select>
-                </>
+                voiceList.isPending || !voiceList.data ? (
+                  <p role="status" className="m-0 text-[13px] text-muted">
+                    Loading voice options…
+                  </p>
+                ) : voiceList.isError ? (
+                  <p role="alert" className="m-0 text-[13px] text-danger">
+                    Voice options could not be loaded.
+                  </p>
+                ) : (
+                  <RadioGroup
+                    name="voice-id"
+                    legend="Choose an AI voice"
+                    value={selectedVoiceId}
+                    onChange={setVoiceId}
+                    options={voices.map((voiceOption) => ({
+                      value: voiceOption.id,
+                      label: voiceOption.label,
+                      hint: voiceOption.hint,
+                      action: (
+                        <Button
+                          variant="secondary"
+                          aria-label={
+                            playingSampleId === voiceOption.id
+                              ? `Stop sample of ${voiceOption.label}`
+                              : `Play a sample of ${voiceOption.label}`
+                          }
+                          onClick={() => toggleSample(voiceOption.id)}
+                        >
+                          {playingSampleId === voiceOption.id ? "Stop" : "Play sample"}
+                        </Button>
+                      ),
+                    }))}
+                  />
+                )
               ) : null}
             </div>
 
@@ -264,7 +308,22 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
                 Could not start processing. Try again.
               </p>
             ) : null}
-            <Button onClick={submit} disabled={start.isPending} className="h-12 text-[15px]">
+            <audio
+              ref={audioRef}
+              aria-hidden="true"
+              preload="none"
+              className="hidden"
+              onEnded={() => setPlayingSampleId(null)}
+              onError={() => setPlayingSampleId(null)}
+            />
+            <Button
+              onClick={submit}
+              disabled={
+                start.isPending ||
+                (voice === "ai" && (!voiceList.data || voices.length === 0 || !selectedVoiceId))
+              }
+              className="h-12 text-[15px]"
+            >
               <Sparkle size={18} aria-hidden="true" />
               {start.isPending ? "Starting…" : "Clean this video"}
             </Button>

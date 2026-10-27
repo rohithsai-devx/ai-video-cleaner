@@ -15,16 +15,21 @@ const mock = vi.hoisted(() => ({
     original_url: null as string | null,
     poster_url: null as string | null,
   },
+  voices: {
+    isPending: true,
+    isError: false,
+    data: null as null | {
+      default_voice_id: string;
+      voices: { id: string; label: string; hint: string; sample_path: string }[];
+    },
+  },
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/api/client", () => ({
   $api: {
-    useQuery: () => ({
-      isPending: false,
-      isError: false,
-      data: mock.video,
-    }),
+    useQuery: (_method: string, path: string) =>
+      path === "/voices" ? mock.voices : { isPending: false, isError: false, data: mock.video },
     useMutation: () => ({ mutate: mock.mutate, isPending: false, isError: false }),
   },
 }));
@@ -57,6 +62,8 @@ describe("VideoScreen start run", () => {
       playback_url: null,
       original_url: null,
     });
+    mock.voices.isPending = true;
+    mock.voices.data = null;
   });
 
   it("shows the clean panel and explains the review switch", () => {
@@ -102,19 +109,83 @@ describe("VideoScreen start run", () => {
     });
   });
 
-  it("sends the selected voice as voice_id", () => {
+  it("loads provider voices and uses the selected voice id", () => {
+    mock.voices.isPending = false;
+    mock.voices.data = {
+      default_voice_id: "coral",
+      voices: [
+        {
+          id: "coral",
+          label: "Coral",
+          hint: "Warm, calm",
+          sample_path: "/voice-samples/coral.mp3",
+        },
+        {
+          id: "sage",
+          label: "Sage",
+          hint: "Clear, steady",
+          sample_path: "/voice-samples/sage.mp3",
+        },
+      ],
+    };
     renderScreen();
     fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
-    const select = screen.getByLabelText("Workspace voice") as HTMLSelectElement;
-    expect(select.value).toBe("default");
+
+    expect(screen.getByRole("radio", { name: "Coral" })).toBeChecked();
+    expect(screen.getByText("Warm, calm")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Sage" }));
     fireEvent.click(screen.getByRole("button", { name: "Clean this video" }));
-    expect(mock.mutate).toHaveBeenCalledTimes(1);
-    expect(mock.mutate.mock.calls[0][0].body).toEqual({
-      mode: "review",
-      voice: "ai",
-      voice_id: select.value,
-      fix_options: { pauses: true, filler: true, retakes: true, slow_parts: true },
-    });
+
+    expect(mock.mutate.mock.calls[0][0].body.voice_id).toBe("sage");
+  });
+
+  it("disables starting while the AI voice list is loading", () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
+
+    expect(screen.getByRole("button", { name: "Clean this video" })).toBeDisabled();
+  });
+
+  it("plays and stops voice samples through one shared audio element", () => {
+    mock.voices.isPending = false;
+    mock.voices.data = {
+      default_voice_id: "coral",
+      voices: [
+        {
+          id: "coral",
+          label: "Coral",
+          hint: "Warm, calm",
+          sample_path: "/voice-samples/coral.mp3",
+        },
+        {
+          id: "sage",
+          label: "Sage",
+          hint: "Clear, steady",
+          sample_path: "/voice-samples/sage.mp3",
+        },
+      ],
+    };
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    const { container, unmount } = renderScreen();
+    fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Play a sample of Coral" }));
+    const audio = container.querySelector("audio");
+    expect(container.querySelectorAll("audio")).toHaveLength(1);
+    expect(audio?.src).toContain("/voice-samples/coral.mp3");
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Stop sample of Coral" })).toHaveTextContent("Stop");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop sample of Coral" }));
+    expect(pause).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Play a sample of Sage" }));
+    expect(container.querySelectorAll("audio")).toHaveLength(1);
+    expect(audio?.src).toContain("/voice-samples/sage.mp3");
+    expect(play).toHaveBeenCalledTimes(2);
+    unmount();
+    vi.restoreAllMocks();
   });
 
   it("sends no voice_id for my voice", () => {
