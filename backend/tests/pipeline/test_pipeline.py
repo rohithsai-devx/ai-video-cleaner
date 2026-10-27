@@ -24,6 +24,7 @@ from app.contracts.events import RunFailedEvent
 from app.pipeline import relay, stages
 from app.pipeline.fixture_engines import FixtureEngines
 from app.pipeline.relay import Task
+from app.providers.errors import ProviderError
 from app.runs import lifecycle
 from app.shared import db
 from app.shared.config import get_settings
@@ -112,6 +113,14 @@ async def _status(user_id: UUID, run_id: UUID) -> dict[str, Any]:
         row = await cur.fetchone()
         assert row is not None
         return row
+
+
+async def _stored_error(user_id: UUID, run_id: UUID) -> RunFailedEvent:
+    async with db.tenant_tx(user_id) as conn:
+        cur = await conn.execute("select error from runs where id = %s", (run_id,))
+        row = await cur.fetchone()
+        assert row is not None and row["error"] is not None
+        return RunFailedEvent.model_validate(row["error"])
 
 
 async def _wait_status(user_id: UUID, run_id: UUID, want: str, limit_s: float = TIMEOUT_S) -> dict[str, Any]:
@@ -319,19 +328,20 @@ async def test_duplicate_delivery_is_a_no_op(
 
 
 class _Broken(FixtureEngines):
-    def __init__(self, storage: GcsStorage, where: str) -> None:
+    def __init__(self, storage: GcsStorage, where: str, failure: Exception | None = None) -> None:
         super().__init__(storage)
         self.where = where
+        self.failure = failure or RuntimeError("ffmpeg exited 1" if where == "render" else "model timed out")
 
     async def propose(self, run: Any, pre: Any, **kwargs: Any) -> Any:
         if self.where == "agent":
-            raise RuntimeError("model timed out")
+            raise self.failure
         return await super().propose(run, pre, **kwargs)
 
     async def render(self, run: Any, proposal: Any, output_uri: str, *, voice: str = "original") -> None:
         del voice
         if self.where == "render":
-            raise RuntimeError("ffmpeg exited 1")
+            raise self.failure
         await super().render(run, proposal, output_uri)
 
 
@@ -379,7 +389,10 @@ async def test_preprocess_failure_after_status_commit_marks_the_run_failed(
     assert engines.saw == "preprocessing"  # beat 1 committed before ffmpeg
     name, err = events[-1]
     assert name == "run.failed" and isinstance(err, RunFailedEvent)
-    assert err.stage == "pre-cpu" and err.retryable is True
+    assert err.stage == "1" and err.retryable is True
+    assert err.message == "We couldn't read this recording's video or audio."
+    assert "boom" not in err.message
+    assert await _stored_error(uid, run_id) == err
     row = await _status(uid, run_id)
     assert row["status"] == "failed" and row["video_status"] == "failed"
 
@@ -541,8 +554,75 @@ async def test_a_failing_stage_marks_the_run_failed_and_frees_the_video(
         if q == queue:
             break
     name, err = events[-1]
-    assert name == "run.failed" and err.stage == queue and err.retryable is True
+    assert name == "run.failed" and err.retryable is True
+    assert err.stage == ("3" if queue == "agent" else "4")
+    expected = (
+        "Something went wrong on our side. Trying again usually works."
+        if queue == "agent"
+        else "We couldn't read this recording's video or audio."
+    )
+    assert err.message == expected
+    assert "timed out" not in err.message and "ffmpeg exited" not in err.message
+    assert await _stored_error(uid, run_id) == err
     row = await _status(uid, run_id)
     assert row["status"] == "failed" and row["finished_at"] is not None and row["video_status"] == "failed"
     async with db.tenant_tx(uid) as conn:  # the live-run slot is free again: a new run can start
         await lifecycle.start(conn, video_id=video_id, mode="review", voice="original", voice_id=None)
+
+
+@pytest.mark.parametrize(
+    ("retryable", "message"),
+    [
+        (True, "The AI service didn't answer in time. Trying again usually works."),
+        (False, "This step needs a service that isn't set up yet."),
+    ],
+)
+async def test_provider_failures_use_safe_copy_and_retryability(
+    api: httpx.AsyncClient,
+    storage: GcsStorage,
+    worker_pool: None,
+    retryable: bool,
+    message: str,
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    engines = _Broken(storage, "agent", ProviderError("private provider detail", retryable=retryable))
+    events: list[Any] = []
+    for queue in ("pre-cpu", "agent"):
+        task = Task(
+            task_id=db.task_id(run_id, queue, 1),
+            queue=queue,
+            run_id=run_id,
+            workspace_id=ws,
+            attempt=1,
+        )  # type: ignore[arg-type]
+        events = await stages.handle(task, engines, storage)
+    name, err = events[-1]
+    assert name == "run.failed" and isinstance(err, RunFailedEvent)
+    assert err.stage == "3" and err.message == message and err.retryable is retryable
+    assert "private provider detail" not in err.message
+    assert await _stored_error(uid, run_id) == err
+
+
+async def test_unknown_failure_uses_default_safe_copy(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, ws = await _start_run(uid, "review", storage)
+    engines = _Broken(storage, "agent", LookupError("private detail"))
+    events: list[Any] = []
+    for queue in ("pre-cpu", "agent"):
+        task = Task(
+            task_id=db.task_id(run_id, queue, 1),
+            queue=queue,
+            run_id=run_id,
+            workspace_id=ws,
+            attempt=1,
+        )  # type: ignore[arg-type]
+        events = await stages.handle(task, engines, storage)
+    name, err = events[-1]
+    assert name == "run.failed" and isinstance(err, RunFailedEvent)
+    assert err.stage == "3"
+    assert err.message == "Something went wrong on our side. Trying again usually works."
+    assert err.retryable is True and "private detail" not in err.message
+    assert await _stored_error(uid, run_id) == err

@@ -28,12 +28,27 @@ from app.contracts.enums import RunStatus, VoiceMode
 from app.contracts.events import RunDoneEvent, RunFailedEvent, RunProposalReadyEvent
 from app.contracts.pipeline import FixOptions, PreprocessResult, Proposal
 from app.pipeline.engines import Engines
+from app.pipeline.media import RecordingTooLong
+from app.providers.errors import ProviderError
 from app.runs import lifecycle, review
 from app.runs.lifecycle import Event, Lost, RunRef
 from app.shared.db import Conn, Queue, worker_tx
 from app.shared.storage import GcsStorage
 
 log = logging.getLogger(__name__)
+
+_STEP_BY_QUEUE = {"pre-cpu": "1", "agent": "3", "post-io": "4"}
+_PROVIDER_MESSAGES = {
+    True: "The AI service didn't answer in time. Trying again usually works.",
+    False: "This step needs a service that isn't set up yet.",
+}
+_MEDIA_MESSAGE = "We couldn't read this recording's video or audio."
+_DEFAULT_FAILURE_MESSAGE = "Something went wrong on our side. Trying again usually works."
+
+
+class MediaStageError(Exception):
+    """A media engine failed; its underlying exception stays in logs, not the API message."""
+
 
 Handler = Callable[[Conn, RunRef, Engines, GcsStorage], Awaitable[list[Event]]]
 
@@ -121,7 +136,21 @@ _VIA = {"approved": "postprocessing"}
 
 
 async def _fail(task: Task, exc: Exception) -> list[Event]:
-    err = RunFailedEvent(stage=task.queue, message=f"{type(exc).__name__}: {exc}"[:500], retryable=True)
+    step = _STEP_BY_QUEUE.get(task.queue)
+    if step is None:
+        log.error("cannot map failure queue %s to a user step", task.queue)
+        return []
+    if isinstance(exc, ProviderError):
+        message = _PROVIDER_MESSAGES[exc.retryable]
+    elif isinstance(exc, MediaStageError):
+        message = _MEDIA_MESSAGE
+    else:
+        message = _DEFAULT_FAILURE_MESSAGE
+    err = RunFailedEvent(
+        stage=step,
+        message=message,
+        retryable=bool(getattr(exc, "retryable", True)),
+    )
     try:
         async with worker_tx(task.workspace_id) as conn:
             run = await lifecycle.load(conn, task.run_id)
@@ -181,7 +210,10 @@ async def _preprocess(task: Task, engines: Engines) -> list[Event]:
             events = await lifecycle.advance(conn, run, "preprocessing", stage="preprocess")
             run = dataclasses.replace(run, status="preprocessing", stage="preprocess")
     # Beat 2. The status commit has landed, so ffmpeg holds no run-row lock and no connection.
-    pre = await engines.preprocess(run, raw_uri)
+    try:
+        pre = await engines.preprocess(run, raw_uri)
+    except (OSError, RecordingTooLong, RuntimeError) as exc:
+        raise MediaStageError() from exc
     async with worker_tx(task.workspace_id) as conn:
         run = await _still(conn, task, "preprocessing")
         if run is None:
@@ -254,7 +286,10 @@ async def _postprocess(task: Task, engines: Engines, storage: GcsStorage) -> lis
             run = dataclasses.replace(run, status="postprocessing", stage="render")
     # Beat 2. Same rule as preprocess: render (ffmpeg) runs with no connection held.
     output_uri = storage.output_uri(run.id, proposal.version)
-    await engines.render(run, proposal, output_uri, voice=voice)
+    try:
+        await engines.render(run, proposal, output_uri, voice=voice)
+    except (OSError, RecordingTooLong, RuntimeError) as exc:
+        raise MediaStageError() from exc
     async with worker_tx(task.workspace_id) as conn:
         run = await _still(conn, task, "postprocessing")
         if run is None:
