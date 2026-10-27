@@ -1,6 +1,6 @@
 """Fit kept spans to measured audio. Cuts are copied. Narration is never sped up."""
 
-from app.contracts.pipeline import EDLEntry, SegContext
+from app.contracts.pipeline import EDLEntry, SegContext, timeline_duration
 from app.runs.checks import MAX_SPEED
 
 
@@ -39,7 +39,7 @@ def _fit(
         if capped > 0:
             speed = capped
 
-    played = span / speed
+    played = timeline_duration((start, end), speed)
     freeze = target - played if played < target else 0.0
     if speed != 1.0:
         action = "speed"

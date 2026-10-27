@@ -188,7 +188,9 @@ async def test_editable_fields_save_as_version_two(api: httpx.AsyncClient, stora
 
     saved = await _save(uid, run_id, body)
     assert saved.version == 2 and saved.source == "user"
-    view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()["proposal"]
+    proposal_view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()
+    assert proposal_view["script_lines"] == []
+    view = proposal_view["proposal"]
     assert view["version"] == 2 and view["script"]["blocks"][0]["text"] == "Edited opening line."
 
 

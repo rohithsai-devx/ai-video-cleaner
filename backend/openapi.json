@@ -687,6 +687,14 @@
           "proposal": {
             "$ref": "#/components/schemas/Proposal"
           },
+          "script_lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ScriptLine"
+            },
+            "title": "Script Lines",
+            "type": "array"
+          },
           "spots": {
             "default": [],
             "items": {
@@ -1197,6 +1205,39 @@
           "est_dur"
         ],
         "title": "ScriptBlock",
+        "type": "object"
+      },
+      "ScriptLine": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "overflow_s": {
+            "title": "Overflow S",
+            "type": "number"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block_id",
+          "text",
+          "start",
+          "end",
+          "overflow_s"
+        ],
+        "title": "ScriptLine",
         "type": "object"
       },
       "SegContext": {

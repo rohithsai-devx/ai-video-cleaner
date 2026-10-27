@@ -95,6 +95,12 @@ async def chosen_fixes(conn: Conn, run_id: UUID) -> dict[str, tuple[str, str]]:
     }
 
 
+async def voice_mode(conn: Conn, run_id: UUID) -> VoiceMode | None:
+    cur = await conn.execute("select voice from runs where id = %s", (run_id,))
+    row = await cur.fetchone()
+    return None if row is None else row["voice"]
+
+
 async def keyframes(conn: Conn, run: RunRef) -> list[Keyframe]:
     cur = await conn.execute("select pre from runs where id = %s", (run.id,))
     row = await cur.fetchone()

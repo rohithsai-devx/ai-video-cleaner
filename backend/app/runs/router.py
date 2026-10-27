@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 from sse_starlette import EventSourceResponse
 
 from app.auth import CurrentUser
+from app.contracts.enums import VoiceMode
 from app.contracts.events import RunEvent, RunStatusEvent
 from app.contracts.pipeline import Proposal
 from app.runs import lifecycle, review
@@ -29,6 +30,7 @@ from app.runs.schemas import (
     VoiceList,
     VoiceOption,
 )
+from app.runs.script_lines import script_lines
 from app.shared.config import VOICES, get_settings
 from app.shared.db import tenant_tx
 from app.shared.errors import not_found
@@ -85,6 +87,7 @@ async def _view(
     frames: list[review.Keyframe],
     agent_v1: Proposal,
     choices: dict[str, tuple[str, str]],
+    voice: VoiceMode,
 ) -> ProposalView:
     urls = await storage.sign(*(k.uri for k in frames))  # after commit, in a thread
     thumbs = [
@@ -102,6 +105,7 @@ async def _view(
             for spot in proposal.spots
         ],
         chapters=chapters(proposal),
+        script_lines=script_lines(proposal, voice=voice),
     )
 
 
@@ -130,14 +134,17 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
             found = await review.read(conn, run_id)
             agent_v1 = await review.first_version(conn, run_id) if found is not None else None
             choices = await review.chosen_fixes(conn, run_id) if found is not None else {}
+            voice = await review.voice_mode(conn, run_id) if found is not None else None
         except review.NoProposal:
             raise not_found("proposal") from None
     if found is None:
         raise not_found("run")
     if agent_v1 is None:
         raise not_found("proposal")
+    if voice is None:
+        raise not_found("run")
     proposal, frames = found
-    return await _view(storage, proposal, frames, agent_v1, choices)
+    return await _view(storage, proposal, frames, agent_v1, choices, voice)
 
 
 @router.put("/runs/{run_id}/proposal", tags=["runs"])
@@ -153,9 +160,12 @@ async def update_proposal(
         frames = await review.keyframes(conn, run)
         agent_v1 = await review.first_version(conn, run_id)
         choices = await review.chosen_fixes(conn, run_id)
+        voice = await review.voice_mode(conn, run_id)
     if agent_v1 is None:
         raise not_found("proposal")
-    return await _view(storage, proposal, frames, agent_v1, choices)
+    if voice is None:
+        raise not_found("run")
+    return await _view(storage, proposal, frames, agent_v1, choices, voice)
 
 
 @router.post("/runs/{run_id}/approve", status_code=status.HTTP_202_ACCEPTED, tags=["runs"])

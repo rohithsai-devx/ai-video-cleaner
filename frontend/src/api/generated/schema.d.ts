@@ -576,6 +576,11 @@ export interface components {
             keyframes: components["schemas"]["KeyframeThumb"][];
             proposal: components["schemas"]["Proposal"];
             /**
+             * Script Lines
+             * @default []
+             */
+            script_lines: components["schemas"]["ScriptLine"][];
+            /**
              * Spots
              * @default []
              */
@@ -762,6 +767,19 @@ export interface components {
             target_max: number;
             /** Target Min */
             target_min: number;
+            /** Text */
+            text: string;
+        };
+        /** ScriptLine */
+        ScriptLine: {
+            /** Block Id */
+            block_id: string;
+            /** End */
+            end: number;
+            /** Overflow S */
+            overflow_s: number;
+            /** Start */
+            start: number;
             /** Text */
             text: string;
         };

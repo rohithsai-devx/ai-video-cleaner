@@ -15,6 +15,13 @@ from app.contracts.enums import ProposalSource, RunMode, VoiceMode
 Span = tuple[float, float]  # (start_s, end_s) on the source timeline
 
 
+def timeline_duration(span: Span, speed: float, freeze_s: float = 0.0) -> float:
+    """Kept screen duration after speed and hold."""
+    if speed <= 0:
+        return 0.0
+    return (span[1] - span[0]) / speed + freeze_s
+
+
 class FixOptions(BaseModel):
     pauses: bool = True
     filler: bool = True
@@ -91,6 +98,14 @@ class Chapter(BaseModel):
     title: str
     start: float
     end: float
+
+
+class ScriptLine(BaseModel):
+    block_id: str
+    text: str
+    start: float
+    end: float
+    overflow_s: float
 
 
 ChangeKind = Literal["pause", "filler", "retake", "cut", "speed", "hold"]
@@ -258,6 +273,7 @@ __all__ = [
     "Proposal",
     "Script",
     "ScriptBlock",
+    "ScriptLine",
     "SegContext",
     "Segment",
     "Spot",
@@ -266,4 +282,5 @@ __all__ = [
     "TranscriptContext",
     "Word",
     "merge_by",
+    "timeline_duration",
 ]
