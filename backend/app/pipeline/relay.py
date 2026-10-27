@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from app.pipeline.engines import Engines
 from app.pipeline.stages import Task, handle
@@ -25,6 +26,11 @@ log = logging.getLogger(__name__)
 
 _POLL_S = 0.1
 _CLAIM_BATCH = 10
+
+
+def _payload_attempt(payload: dict[str, Any]) -> int:
+    """Pre-D1 outbox rows have no attempt field and represent their initial attempt."""
+    return int(payload.get("attempt", 1))
 
 
 @dataclass(frozen=True)
@@ -67,7 +73,7 @@ async def claim(relay: Conn, limit: int, queues: tuple[str, ...] | None = None) 
                         queue=r["queue"],
                         run_id=r["run_id"],
                         workspace_id=r["workspace_id"],
-                        attempt=int(r["payload"]["attempt"]),
+                        attempt=_payload_attempt(r["payload"]),
                     ),
                 )
             )

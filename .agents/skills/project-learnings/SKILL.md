@@ -84,3 +84,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** pytest discovers an imported fixture when the test module imports it, but does not automatically register its fixture dependencies from the fixture's defining module.
 - **Fix:** import `published` from `tests.factories` in the test module that imports `api`.
 - **Takeaway:** when reusing a fixture across test modules, import its fixture dependencies as well.
+
+### Existing outbox rows may predate attempt payloads (2026-10-27)
+- **Symptom:** relay claim raises `KeyError: 'attempt'` on an unsent task after the D1 payload change.
+- **Root cause:** a local database can retain pre-D1 outbox rows whose payload contains only `run_id`.
+- **Fix:** treat a missing payload attempt as attempt 1; new enqueues still always include the attempt.
+- **Takeaway:** when adding required fields to durable queued payloads, preserve a safe default for already stored rows.

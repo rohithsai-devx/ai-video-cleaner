@@ -36,6 +36,11 @@ PASSWORD = "correct horse battery"
 TIMEOUT_S = 15
 
 
+async def test_legacy_outbox_payload_defaults_to_attempt_one() -> None:
+    assert relay._payload_attempt({"run_id": "legacy-run"}) == 1
+    assert relay._payload_attempt({"run_id": "run", "attempt": "3"}) == 3
+
+
 @pytest.fixture
 async def api() -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
