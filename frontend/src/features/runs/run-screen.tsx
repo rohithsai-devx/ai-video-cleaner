@@ -3,9 +3,9 @@
 import { CaretLeft } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { $api } from "@/api/client";
+import { $api, fetchClient } from "@/api/client";
 import { Banner } from "@/ui/banner";
 import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -26,6 +26,15 @@ export function RunScreen({ id }: { id: string }) {
   );
   const cancel = $api.useMutation("post", "/runs/{run_id}/cancel");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<"conflict" | "generic" | null>(null);
+  const retry = useMutation({
+    mutationFn: async () => {
+      const response = await fetchClient.POST("/runs/{run_id}/retry", {
+        params: { path: { run_id: id } },
+      });
+      return { status: response.response.status, data: response.data };
+    },
+  });
 
   const queryClient = useQueryClient();
   const terminal = run ? isTerminal(run.status) : false;
@@ -52,6 +61,22 @@ export function RunScreen({ id }: { id: string }) {
   const canStop = Boolean(
     run && live && run.status !== "awaiting_review" && run.status !== "postprocessing",
   );
+
+  async function tryAgain() {
+    setRetryMessage(null);
+    const result = await retry.mutateAsync().catch(() => null);
+    if (result?.status === 409) {
+      setRetryMessage("conflict");
+    } else if (result?.data) {
+      await queryClient.invalidateQueries({
+        queryKey: $api.queryOptions("get", "/runs/{run_id}", {
+          params: { path: { run_id: id } },
+        }).queryKey,
+      });
+    } else {
+      setRetryMessage("generic");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -113,10 +138,38 @@ export function RunScreen({ id }: { id: string }) {
               ) : null}
 
               {failed ? (
-                <Banner tone="danger">
+                <Banner
+                  tone="danger"
+                  action={
+                    run.error?.retryable && retryMessage !== "conflict" ? (
+                      <Button
+                        variant="danger"
+                        disabled={retry.isPending}
+                        onClick={() => void tryAgain()}
+                      >
+                        {retry.isPending ? "Trying again…" : "Try again"}
+                      </Button>
+                    ) : undefined
+                  }
+                >
                   {run.error?.message ?? "Something went wrong on our side."} Your recording is
                   safe.
                 </Banner>
+              ) : null}
+
+              {retryMessage === "conflict" && run ? (
+                <p role="alert" className="m-0 text-sm text-danger">
+                  This run can&apos;t be retried. Start a new one from the{" "}
+                  <Link href={`/videos/${run.video_id}`} className="text-link underline">
+                    video page
+                  </Link>
+                  .
+                </p>
+              ) : null}
+              {retryMessage === "generic" ? (
+                <p role="alert" className="m-0 text-sm text-danger">
+                  Could not retry this run. Try again.
+                </p>
               ) : null}
 
               {canStop || cancelled ? (
