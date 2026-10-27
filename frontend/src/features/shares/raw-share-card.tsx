@@ -13,12 +13,10 @@ type VideoStatus = components["schemas"]["Video"]["status"];
 export function RawShareCard({
   videoId,
   status,
-  title,
   originalUrl,
 }: {
   videoId: string;
   status: VideoStatus;
-  title: string;
   originalUrl?: string | null;
 }) {
   const params = { params: { path: { video_id: videoId } } } as const;

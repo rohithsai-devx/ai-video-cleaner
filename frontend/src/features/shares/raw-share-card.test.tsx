@@ -29,12 +29,7 @@ import { RawShareCard } from "./raw-share-card";
 function renderCard(status = "uploaded", originalUrl: string | null = "/original.mp4") {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <RawShareCard
-        videoId="v1"
-        status={status as "uploaded"}
-        title="Demo"
-        originalUrl={originalUrl}
-      />
+      <RawShareCard videoId="v1" status={status as "uploaded"} originalUrl={originalUrl} />
     </QueryClientProvider>,
   );
 }
