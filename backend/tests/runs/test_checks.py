@@ -4,9 +4,13 @@ import pytest
 
 from app.contracts.pipeline import (
     Agent,
+    AgentState,
     CheckResult,
+    Drop,
     EditPlan,
     EDLEntry,
+    FixOptions,
+    PreprocessResult,
     Script,
     ScriptBlock,
     SegContext,
@@ -18,6 +22,7 @@ from app.runs.checks import (
     clean_only,
     coverage_order,
     edl_covers_script,
+    fix_options_respected,
     key_terms_kept,
     length_fit,
     nothing_invented,
@@ -362,6 +367,7 @@ def test_recheck_recomputes_every_check_and_drops_stale_script_results() -> None
         "clean_only",
         "edl_valid",
         "edl_covers_script",
+        "fix_options_respected",
     ]
     assert all(c.passed for c in fresh)
 
@@ -374,3 +380,75 @@ def test_recheck_recomputes_every_check_and_drops_stale_script_results() -> None
     assert by_name["nothing_invented"].message == "b1: invented 99"
     assert by_name["length_fit"].passed is True
     assert by_name["clean_only"].passed is True
+
+
+def test_user_edit_is_not_rejected_by_agent_fix_options() -> None:
+    script, plan, contexts, transcript, words, segments = _passing_inputs()
+    checks = recheck(
+        script,
+        plan,
+        contexts,
+        transcript,
+        words,
+        segments,
+        10.0,
+        "original",
+        2.0,
+        FixOptions(slow_parts=False),
+        "user",
+    )
+
+    assert next(check for check in checks if check.name == "fix_options_respected").passed is True
+
+
+def _option_state(
+    *, fix_options: FixOptions, action: str = "speed", segment_active: bool = True
+) -> AgentState:
+    segment = _seg("s1", active=segment_active)
+    pre = PreprocessResult(
+        mezz_uri="gs://b/m.mp4",
+        audio_uri="gs://b/a.wav",
+        duration=4.0,
+        fps=1.0,
+        width=8,
+        height=8,
+        words=[Word(w="um", start=0.2, end=0.4)],
+        keyframes=[],
+        segments=[segment],
+    )
+    return AgentState(
+        run_id="run-1",
+        mode="review",
+        voice="original",
+        voice_wps=2.0,
+        pre=pre,
+        fix_options=fix_options,
+        transcript_ctx=TranscriptContext(
+            steps=[], key_terms=[], drops=[Drop(span=(0.2, 0.4), kind="filler", reason="filler")]
+        ),
+        edit_plan=EditPlan(entries=[_entry(action=action, speed=1.5)]),
+    )
+
+
+def test_fix_options_check_rejects_speed_when_slow_parts_are_disabled() -> None:
+    result = fix_options_respected(_option_state(fix_options=FixOptions(slow_parts=False)))
+
+    assert result.passed is False
+    assert result.target == "video_editor"
+    assert "Speed-ups are turned off" in result.message
+
+
+def test_fix_options_check_allows_speed_when_slow_parts_are_enabled() -> None:
+    result = fix_options_respected(_option_state(fix_options=FixOptions(slow_parts=True)))
+
+    assert result.passed is True
+
+
+def test_fix_options_check_rejects_cutting_an_idle_segment_when_pauses_are_disabled() -> None:
+    result = fix_options_respected(
+        _option_state(fix_options=FixOptions(pauses=False), action="cut", segment_active=False)
+    )
+
+    assert result.passed is False
+    assert result.target == "video_editor"
+    assert "Removing long pauses is off" in result.message

@@ -253,10 +253,10 @@ class _Broken(FixtureEngines):
         super().__init__(storage)
         self.where = where
 
-    async def propose(self, run: Any, pre: Any) -> Any:
+    async def propose(self, run: Any, pre: Any, **kwargs: Any) -> Any:
         if self.where == "agent":
             raise RuntimeError("model timed out")
-        return await super().propose(run, pre)
+        return await super().propose(run, pre, **kwargs)
 
     async def render(self, run: Any, proposal: Any, output_uri: str, *, voice: str = "original") -> None:
         del voice

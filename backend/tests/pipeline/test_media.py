@@ -18,6 +18,7 @@ from app.contracts.pipeline import (
     Drop,
     EditPlan,
     EDLEntry,
+    FixOptions,
     PreprocessResult,
     Proposal,
     Script,
@@ -140,7 +141,15 @@ async def test_propose_returns_the_stub() -> None:
         keyframes=[],
         segments=[],
     )
-    assert await MediaEngines(storage).propose(_RUN, pre) == stub_proposal(_RUN, pre)
+    output = await MediaEngines(storage).propose(
+        _RUN,
+        pre,
+        voice="ai",
+        fix_options=FixOptions(pauses=False, filler=False, retakes=False, slow_parts=False),
+    )
+    assert output.script == stub_proposal(_RUN, pre).script
+    assert all(entry.action == "keep" for entry in output.edit_plan.entries)
+    assert next(check for check in output.checks if check.name == "fix_options_respected").passed is True
 
 
 def test_ai_voice_shares_audio_and_does_not_speed() -> None:

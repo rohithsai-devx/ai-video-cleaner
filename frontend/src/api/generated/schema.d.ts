@@ -324,6 +324,29 @@ export interface components {
             /** Entries */
             entries: components["schemas"]["EDLEntry"][];
         };
+        /** FixOptions */
+        FixOptions: {
+            /**
+             * Filler
+             * @default true
+             */
+            filler: boolean;
+            /**
+             * Pauses
+             * @default true
+             */
+            pauses: boolean;
+            /**
+             * Retakes
+             * @default true
+             */
+            retakes: boolean;
+            /**
+             * Slow Parts
+             * @default true
+             */
+            slow_parts: boolean;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -438,6 +461,7 @@ export interface components {
             error?: components["schemas"]["RunFailedEvent"] | null;
             /** Finished At */
             finished_at?: string | null;
+            fix_options?: components["schemas"]["FixOptions"];
             /**
              * Flags
              * @default []
@@ -471,6 +495,7 @@ export interface components {
         };
         /** RunCreate */
         RunCreate: {
+            fix_options?: components["schemas"]["FixOptions"];
             /**
              * Mode
              * @enum {string}

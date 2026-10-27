@@ -14,6 +14,14 @@ from app.contracts.enums import ProposalSource, RunMode, VoiceMode
 
 Span = tuple[float, float]  # (start_s, end_s) on the source timeline
 
+
+class FixOptions(BaseModel):
+    pauses: bool = True
+    filler: bool = True
+    retakes: bool = True
+    slow_parts: bool = True
+
+
 # ---------- preprocessing output ----------
 
 
@@ -143,13 +151,14 @@ class AgentState(BaseModel):  # LangGraph state (thread_id = run_id)
     voice: VoiceMode
     voice_wps: float  # measured words/sec of chosen voice
     pre: PreprocessResult
+    fix_options: FixOptions = FixOptions()
     seg_contexts: Annotated[list[SegContext], merge_by("seg_id")] = []
     transcript_ctx: TranscriptContext | None = None
     script: Script | None = None
     edit_plan: EditPlan | None = None
     stage: Literal["context", "script", "edit", "done"] = "context"
-    feedback: dict[Agent, list[str]] = {}
-    attempts: dict[Agent, int] = {}
+    feedback: dict[str, list[str]] = {}
+    attempts: dict[str, int] = {}
     checks: list[CheckResult] = []
     flags: Annotated[list[str], add] = []
 
@@ -176,6 +185,7 @@ __all__ = [
     "Drop",
     "EDLEntry",
     "EditPlan",
+    "FixOptions",
     "Keyframe",
     "PreprocessResult",
     "Proposal",

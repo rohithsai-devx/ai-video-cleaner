@@ -143,10 +143,17 @@ async def _uploaded_video(c: httpx.AsyncClient, h: dict[str, str], storage: Fake
 
 
 async def _run_awaiting_review(
-    c: httpx.AsyncClient, h: dict[str, str], storage: FakeStorage
+    c: httpx.AsyncClient,
+    h: dict[str, str],
+    storage: FakeStorage,
+    *,
+    fix_options: dict[str, bool] | None = None,
 ) -> tuple[dict[str, Any], str]:
     video = await _uploaded_video(c, h, storage)
-    r = await c.post(f"/videos/{video['id']}/runs", json={"mode": "review", "voice": "original"}, headers=h)
+    run_body: dict[str, Any] = {"mode": "review", "voice": "original"}
+    if fix_options is not None:
+        run_body["fix_options"] = fix_options
+    r = await c.post(f"/videos/{video['id']}/runs", json=run_body, headers=h)
     assert r.status_code == 202, r.text
     run_id = r.json()["run_id"]
     pre = {

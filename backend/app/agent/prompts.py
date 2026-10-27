@@ -24,7 +24,8 @@ the timed words someone said while recording their screen.
 
 Return the steps in the order they were said, the key terms worth keeping in the final
 script, and the filler spans (ums, restarts, false starts) that a clean script should drop.
-The drops must be spans of the words you were given, not new text."""
+The drops must be spans of the words you were given, not new text.
+Only propose drops of these kinds: {allowed_drop_kinds}. Follow any feedback from the last attempt."""
 
 VIDEO_EDITOR = """You are the video editor for a screen-recording cleaner. You receive the approved
 script, the frame scores of the recording, and any feedback from a previous attempt.
@@ -33,6 +34,8 @@ Write the edit plan the renderer will cut with:
 
 - Entries are ordered and do not overlap; each source span stays inside its segment.
 - An empty entries list is never valid: if nothing needs cutting, keep every segment.
+- Follow the user's allowed settings: cut idle segments only when cut_idle_segments is true;
+  create speed entries only when speed is true.
 - keep entries carry the picture for one script block (block_id) at a sane speed up to {max_speed};
   cut entries remove a span from the video.
 - Together the kept spans must cover every script block's segments, or the render cannot be built.

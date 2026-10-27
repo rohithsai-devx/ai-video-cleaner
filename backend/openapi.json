@@ -181,6 +181,32 @@
         "title": "EditPlan",
         "type": "object"
       },
+      "FixOptions": {
+        "properties": {
+          "filler": {
+            "default": true,
+            "title": "Filler",
+            "type": "boolean"
+          },
+          "pauses": {
+            "default": true,
+            "title": "Pauses",
+            "type": "boolean"
+          },
+          "retakes": {
+            "default": true,
+            "title": "Retakes",
+            "type": "boolean"
+          },
+          "slow_parts": {
+            "default": true,
+            "title": "Slow Parts",
+            "type": "boolean"
+          }
+        },
+        "title": "FixOptions",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -473,6 +499,9 @@
             ],
             "title": "Finished At"
           },
+          "fix_options": {
+            "$ref": "#/components/schemas/FixOptions"
+          },
           "flags": {
             "default": [],
             "items": {
@@ -569,6 +598,9 @@
       },
       "RunCreate": {
         "properties": {
+          "fix_options": {
+            "$ref": "#/components/schemas/FixOptions"
+          },
           "mode": {
             "enum": [
               "review",

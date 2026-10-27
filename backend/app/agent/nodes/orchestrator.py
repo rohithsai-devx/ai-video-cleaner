@@ -27,6 +27,9 @@ def orchestrator(state: AgentState, runtime: Runtime[Ctx]) -> Command[Any]:
     if state.stage == "done":
         return Command(goto=END)
     if state.stage == "script" and state.script is None:
+        result = code_checks.fix_options_respected(state)
+        if not result.passed:
+            return _redo(state, "transcript_context", [result.message], [result], runtime)
         return Command(goto="script_writer")
     if state.stage == "edit" and state.edit_plan is None:
         return Command(goto="video_editor")
@@ -43,10 +46,14 @@ def _review(state: AgentState, runtime: Runtime[Ctx]) -> Command[Any]:
         # Route to a responsible node that still has attempts: a capped writer must not swallow
         # the editor's own feedback loop when the plan is what failed.
         alive = next(
-            (item for item in failed if state.attempts.get(item.target, 0) < runtime.context.max_attempts),
+            (
+                item
+                for item in failed
+                if state.attempts.get(_route_target(item), 0) < runtime.context.max_attempts
+            ),
             failed[0],
         )
-        return _redo(state, alive.target, notes, results, runtime)
+        return _redo(state, _route_target(alive), notes, results, runtime)
 
     target: Agent = "script_writer" if state.stage == "script" else "video_editor"
     call = make_call(runtime.context.workspace_id, state.run_id, target)
@@ -75,6 +82,7 @@ def _results(state: AgentState) -> list[CheckResult]:
             state.pre.duration,
             state.voice,
             state.voice_wps,
+            state.fix_options,
         )
     return [
         code_checks.length_fit(state.script, state.voice_wps),
@@ -82,7 +90,14 @@ def _results(state: AgentState) -> list[CheckResult]:
         code_checks.coverage_order(state.script, state.pre.segments),
         code_checks.nothing_invented(state.script, state.pre.words, state.seg_contexts),
         code_checks.clean_only(state.script, state.pre.words, state.voice),
+        code_checks.fix_options_respected(state),
     ]
+
+
+def _route_target(result: CheckResult) -> str:
+    if result.name == code_checks.FIX_OPTIONS_RESPECTED and result.target == "script_writer":
+        return "transcript_context"
+    return result.target
 
 
 def _accept(state: AgentState, results: list[CheckResult]) -> Command[Any]:
@@ -92,7 +107,7 @@ def _accept(state: AgentState, results: list[CheckResult]) -> Command[Any]:
 
 
 def _redo(
-    state: AgentState, target: Agent, notes: list[str], results: list[CheckResult], runtime: Runtime[Ctx]
+    state: AgentState, target: str, notes: list[str], results: list[CheckResult], runtime: Runtime[Ctx]
 ) -> Command[Any]:
     attempts = dict(state.attempts)
     attempts[target] = attempts.get(target, 0) + 1
@@ -102,13 +117,25 @@ def _redo(
     if attempts[target] >= runtime.context.max_attempts:
         if "max_attempts" not in state.flags:
             update["flags"] = ["max_attempts"]
+        if target == "transcript_context":
+            if state.transcript_ctx is not None:
+                allowed = set()
+                if state.fix_options.filler:
+                    allowed.add("filler")
+                if state.fix_options.retakes:
+                    allowed.update(("false_start", "retake"))
+                update["transcript_ctx"] = state.transcript_ctx.model_copy(
+                    update={"drops": [drop for drop in state.transcript_ctx.drops if drop.kind in allowed]}
+                )
+            update["stage"] = "script"
+            return Command(goto="script_writer", update=update)
         # END is only legal from the edit stage: a proposal leaving the graph must be complete,
         # so a capped script still gets its cut list from the editor, flagged for review.
         if state.stage == "script":
             update["stage"] = "edit"
             return Command(goto="video_editor", update=update)
         return Command(goto=END, update=update)
-    update["stage"] = "script" if target == "script_writer" else "edit"
+    update["stage"] = "script" if target in ("script_writer", "transcript_context") else "edit"
     return Command(goto=target, update=update)
 
 

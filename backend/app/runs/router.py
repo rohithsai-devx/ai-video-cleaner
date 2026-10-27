@@ -196,7 +196,12 @@ async def start_run(video_id: UUID, body: RunCreate, user_id: CurrentUser) -> Ru
     async with tenant_tx(user_id) as conn:
         try:
             ref, events = await lifecycle.start(
-                conn, video_id=video_id, mode=body.mode, voice=body.voice, voice_id=body.voice_id
+                conn,
+                video_id=video_id,
+                mode=body.mode,
+                voice=body.voice,
+                voice_id=body.voice_id,
+                fix_options=body.fix_options,
             )
         except lifecycle.VideoNotFound:
             raise not_found() from None

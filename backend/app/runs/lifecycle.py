@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 
 from app.contracts.enums import RunMode, RunStatus, VoiceMode
 from app.contracts.events import RunFailedEvent, RunStatusEvent
+from app.contracts.pipeline import FixOptions
 from app.runs.exceptions import LiveRunExists as LiveRunExists
 from app.runs.exceptions import Lost as Lost
 from app.runs.exceptions import VideoNotFound as VideoNotFound
@@ -96,6 +97,7 @@ def _to_run(row: dict[str, Any]) -> Run:
         mode=row["mode"],
         voice=row["voice"],
         voice_id=row["voice_id"],
+        fix_options=FixOptions.model_validate(row["fix_options"] or {}),
         status=row["status"],
         stage=row["stage"],
         attempt=row["attempt"],
@@ -120,7 +122,13 @@ async def get(conn: Conn, run_id: UUID) -> Run | None:
 
 
 async def start(
-    conn: Conn, *, video_id: UUID, mode: RunMode, voice: VoiceMode, voice_id: str | None
+    conn: Conn,
+    *,
+    video_id: UUID,
+    mode: RunMode,
+    voice: VoiceMode,
+    voice_id: str | None,
+    fix_options: FixOptions | None = None,
 ) -> tuple[RunRef, list[Event]]:
     """Insert a queued run, point the video at it, and enqueue pre-cpu."""
     video = await _one(
@@ -135,9 +143,16 @@ async def start(
     try:
         row = await _one(
             conn,
-            "insert into runs (workspace_id, video_id, created_by, mode, voice, voice_id)"
-            " values (%s, %s, app.uid(), %s, %s, %s) returning id, attempt",
-            (video["workspace_id"], video_id, mode, voice, voice_id),
+            "insert into runs (workspace_id, video_id, created_by, mode, voice, voice_id, fix_options)"
+            " values (%s, %s, app.uid(), %s, %s, %s, %s) returning id, attempt",
+            (
+                video["workspace_id"],
+                video_id,
+                mode,
+                voice,
+                voice_id,
+                Jsonb((fix_options or FixOptions()).model_dump(mode="json")),
+            ),
         )
     except errors.UniqueViolation as e:
         if e.diag.constraint_name != "runs_one_live_per_video":

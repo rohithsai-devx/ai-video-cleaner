@@ -12,6 +12,7 @@ from app.contracts.enums import VoiceMode
 from app.contracts.pipeline import (
     CheckResult,
     EditPlan,
+    FixOptions,
     PreprocessResult,
     Proposal,
     Script,
@@ -34,7 +35,14 @@ class AgentOutput(BaseModel):
 class Engines(Protocol):
     async def preprocess(self, run: RunRef, raw_uri: str) -> PreprocessResult: ...
 
-    async def propose(self, run: RunRef, pre: PreprocessResult) -> AgentOutput: ...
+    async def propose(
+        self,
+        run: RunRef,
+        pre: PreprocessResult,
+        *,
+        voice: VoiceMode = "original",
+        fix_options: FixOptions | None = None,
+    ) -> AgentOutput: ...
 
     async def render(
         self, run: RunRef, proposal: Proposal, output_uri: str, *, voice: VoiceMode = "original"

@@ -42,9 +42,11 @@ def _body() -> dict[str, Any]:
     return {**body, "base_version": 1}
 
 
-async def _review_run(api: httpx.AsyncClient, storage: FakeStorage) -> tuple[dict[str, str], UUID, UUID]:
+async def _review_run(
+    api: httpx.AsyncClient, storage: FakeStorage, *, fix_options: dict[str, bool] | None = None
+) -> tuple[dict[str, str], UUID, UUID]:
     h = await _user(api)
-    video, run_id = await _run_awaiting_review(api, h, storage)
+    video, run_id = await _run_awaiting_review(api, h, storage, fix_options=fix_options)
     return h, _uid(h), UUID(run_id)
 
 
@@ -121,6 +123,22 @@ async def test_editable_fields_save_as_version_two(api: httpx.AsyncClient, stora
     assert saved.version == 2 and saved.source == "user"
     view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()["proposal"]
     assert view["version"] == 2 and view["script"]["blocks"][0]["text"] == "Edited opening line."
+
+
+async def test_user_edit_can_override_a_disabled_fix_option(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h, uid, run_id = await _review_run(
+        api,
+        storage,
+        fix_options={"pauses": True, "filler": True, "retakes": True, "slow_parts": False},
+    )
+    body = _body()
+    body["edit_plan"]["entries"][0].update(action="speed", speed=1.5)
+
+    saved = await _save(uid, run_id, body)
+    result = next(check for check in saved.checks if check.name == "fix_options_respected")
+    assert saved.source == "user" and result.passed is True
 
 
 async def test_queued_run_is_not_reviewable(api: httpx.AsyncClient, storage: FakeStorage) -> None:

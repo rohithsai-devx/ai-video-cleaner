@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.contracts.enums import RunMode, RunStatus, VoiceMode
 from app.contracts.events import RunFailedEvent
-from app.contracts.pipeline import EditPlan, Proposal, Script, SegContext
+from app.contracts.pipeline import EditPlan, FixOptions, Proposal, Script, SegContext
 
 
 class RunSummary(BaseModel):
@@ -20,6 +20,7 @@ class RunCreate(BaseModel):
     mode: RunMode
     voice: VoiceMode
     voice_id: str | None = Field(default=None, min_length=1)
+    fix_options: FixOptions = Field(default_factory=FixOptions)
 
     @model_validator(mode="after")
     def _voice_id_iff_ai(self) -> Self:
@@ -38,6 +39,7 @@ class Run(BaseModel):
     mode: RunMode
     voice: VoiceMode
     voice_id: str | None = None
+    fix_options: FixOptions = Field(default_factory=FixOptions)
     status: RunStatus
     stage: str | None = None
     attempt: int = Field(ge=1)

@@ -108,7 +108,11 @@ async def test_start_run_and_second_live_run_conflicts(
 ) -> None:
     h = await _user(api)
     video = await _uploaded_video(api, h, storage)
-    body = {"mode": "review", "voice": "original"}
+    body = {
+        "mode": "review",
+        "voice": "original",
+        "fix_options": {"pauses": False, "filler": True, "retakes": False, "slow_parts": True},
+    }
     r = await api.post(f"/videos/{video['id']}/runs", json=body, headers=h)
     assert r.status_code == 202, r.text
     run_id = r.json()["run_id"]
@@ -116,6 +120,7 @@ async def test_start_run_and_second_live_run_conflicts(
 
     r = await api.get(f"/runs/{run_id}", headers=h)
     assert r.status_code == 200 and r.json()["status"] == "queued"
+    assert r.json()["fix_options"] == body["fix_options"]
     v = (await api.get(f"/videos/{video['id']}", headers=h)).json()
     assert v["status"] == "processing" and v["current_run"]["run_id"] == run_id
     assert (run_id, "run.status", RunStatusEvent(status="queued")) in [(rid, e, p) for rid, e, p in published]

@@ -20,6 +20,10 @@ def video_editor(state: AgentState, runtime: Runtime[Ctx]) -> dict[str, Any]:
         "script": None if state.script is None else state.script.model_dump(mode="json"),
         "feedback": state.feedback.get("video_editor", []),
         "frames": scores,
+        "allowed": {
+            "cut_idle_segments": state.fix_options.pauses,
+            "speed": state.fix_options.slow_parts,
+        },
     }
     plan = runtime.context.bundle.complete(
         make_call(runtime.context.workspace_id, state.run_id, "video_editor"),

@@ -5,11 +5,14 @@ Judgement stays with the agent. Only global limits live here.
 
 import re
 
-from app.contracts.enums import VoiceMode
+from app.contracts.enums import ProposalSource, VoiceMode
 from app.contracts.pipeline import (
+    Agent,
+    AgentState,
     CheckResult,
     EditPlan,
     EDLEntry,
+    FixOptions,
     Script,
     ScriptBlock,
     SegContext,
@@ -19,6 +22,7 @@ from app.contracts.pipeline import (
 )
 
 EDL_VALID = "edl_valid"
+FIX_OPTIONS_RESPECTED = "fix_options_respected"
 MAX_SPEED = 2.0
 MIN_DUR = 0.3
 # Stand-in until a measured voice rate is stored. 2.0 keeps the review fixture inside its targets.
@@ -143,6 +147,62 @@ def clean_only(script: Script, words: list[Word], voice: VoiceMode) -> CheckResu
     return _script("clean_only", problems, ref)
 
 
+def fix_options_respected(state: AgentState, source: ProposalSource = "agent") -> CheckResult:
+    """Check that agent decisions follow the run's allowed fixes; user edits are intentional overrides."""
+    return _fix_options_check(
+        state.transcript_ctx or TranscriptContext(steps=[], key_terms=[], drops=[]),
+        state.edit_plan,
+        state.pre.segments,
+        state.fix_options,
+        source,
+    )
+
+
+def _fix_options_check(
+    transcript: TranscriptContext,
+    plan: EditPlan | None,
+    segments: list[Segment],
+    options: FixOptions,
+    source: ProposalSource,
+) -> CheckResult:
+    target: Agent = "script_writer"
+    problems: list[str] = []
+    if source == "agent":
+        for drop in transcript.drops:
+            if drop.kind == "filler" and not options.filler:
+                problems.append("Filler removal is off for this run; keep filler words in the transcript.")
+                break
+            if drop.kind in ("false_start", "retake") and not options.retakes:
+                problems.append(
+                    "Retake removal is off for this run; keep restarts and retakes in the transcript."
+                )
+                break
+        if not problems and plan is not None:
+            target = "video_editor"
+            by_id = {segment.seg_id: segment for segment in segments}
+            for entry in plan.entries:
+                segment = by_id.get(entry.seg_id)
+                if (
+                    entry.action == "cut"
+                    and segment is not None
+                    and not segment.active
+                    and not options.pauses
+                ):
+                    problems.append("Removing long pauses is off for this run; keep idle segments.")
+                    break
+                if entry.action == "speed" and not options.slow_parts:
+                    problems.append("Speed-ups are turned off for this run; use keep or cut.")
+                    break
+    elif plan is not None:
+        target = "video_editor"
+    return CheckResult(
+        name=FIX_OPTIONS_RESPECTED,
+        passed=not problems,
+        target=target,
+        message="; ".join(problems),
+    )
+
+
 def edl_covers_script(script: Script, plan: EditPlan) -> CheckResult:
     problems: list[str] = []
     ref: str | None = None
@@ -174,6 +234,8 @@ def recheck(
     duration_s: float | None,
     voice: VoiceMode,
     voice_wps: float,
+    fix_options: FixOptions | None = None,
+    source: ProposalSource = "agent",
 ) -> list[CheckResult]:
     """Recompute every check from the current proposal. Stale script checks are not kept."""
     return [
@@ -184,6 +246,7 @@ def recheck(
         clean_only(script, words, voice),
         edl_valid(plan, seg_contexts, duration_s),
         edl_covers_script(script, plan),
+        _fix_options_check(transcript, plan, segments, fix_options or FixOptions(), source),
     ]
 
 

@@ -26,7 +26,7 @@ from psycopg.types.json import Jsonb
 
 from app.contracts.enums import RunStatus, VoiceMode
 from app.contracts.events import RunDoneEvent, RunFailedEvent, RunProposalReadyEvent
-from app.contracts.pipeline import PreprocessResult, Proposal
+from app.contracts.pipeline import FixOptions, PreprocessResult, Proposal
 from app.pipeline.engines import Engines
 from app.runs import lifecycle, review
 from app.runs.lifecycle import Event, Lost, RunRef
@@ -134,6 +134,14 @@ async def _voice(conn: Conn, run_id: UUID) -> VoiceMode:
     return voice
 
 
+async def _fix_options(conn: Conn, run_id: UUID) -> FixOptions:
+    cur = await conn.execute("select fix_options from runs where id = %s", (run_id,))
+    row = await cur.fetchone()
+    if row is None:
+        raise RuntimeError(f"run {run_id} has no fix options")
+    return FixOptions.model_validate(row["fix_options"] or {})
+
+
 async def _raw_uri(conn: Conn, run: RunRef) -> str:
     cur = await conn.execute("select raw_uri from videos where id = %s", (run.video_id,))
     row = await cur.fetchone()
@@ -176,7 +184,9 @@ async def _pre_result(conn: Conn, run_id: UUID) -> PreprocessResult:
 
 async def _agent(conn: Conn, run: RunRef, engines: Engines, storage: GcsStorage) -> list[Event]:
     pre = await _pre_result(conn, run.id)
-    out = await engines.propose(run, pre)
+    voice = await _voice(conn, run.id)
+    fix_options = await _fix_options(conn, run.id)
+    out = await engines.propose(run, pre, voice=voice, fix_options=fix_options)
     # v1 is idempotent: a replayed agent task re-saves it as a no-op
     await conn.execute(
         "insert into proposals (workspace_id, run_id, version, source, script, edit_plan, seg_contexts,"

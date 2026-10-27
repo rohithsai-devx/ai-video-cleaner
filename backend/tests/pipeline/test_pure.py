@@ -6,13 +6,15 @@ Expected numbers are the table and the segment example in
 
 from uuid import UUID
 
-from app.contracts.pipeline import EDLEntry, Keyframe, PreprocessResult, SegContext, Segment
+from app.contracts.pipeline import EDLEntry, FixOptions, Keyframe, PreprocessResult, SegContext, Segment
+from app.pipeline.fixture_engines import FixtureEngines
 from app.pipeline.proposal_stub import stub_proposal
 from app.pipeline.segment import segment
 from app.pipeline.timeline import fit_timeline
 from app.pipeline.words import stub_words
 from app.runs.checks import edl_valid
 from app.runs.lifecycle import RunRef
+from app.shared.storage import GcsStorage
 
 # span, min, cuttable, audio, narration, src end, speed, freeze
 _FIT = [
@@ -157,3 +159,17 @@ def test_stub_proposal_empty_segments_cover_the_duration() -> None:
     ]
     check = edl_valid(out.edit_plan, out.seg_contexts, 5)
     assert check.passed, check.message
+
+
+async def test_fixture_engine_respects_disabled_fixes() -> None:
+    storage = GcsStorage(bucket="b", emulator_host="localhost:9")
+    output = await FixtureEngines(storage).propose(
+        _RUN,
+        _pre([], 5),
+        voice="ai",
+        fix_options=FixOptions(pauses=False, filler=False, retakes=False, slow_parts=False),
+    )
+
+    assert output.transcript_ctx.drops == []
+    assert all(entry.action == "keep" for entry in output.edit_plan.entries)
+    assert next(check for check in output.checks if check.name == "fix_options_respected").passed is True

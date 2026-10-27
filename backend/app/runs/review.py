@@ -15,6 +15,7 @@ from app.contracts.enums import VoiceMode
 from app.contracts.pipeline import (
     CheckResult,
     EditPlan,
+    FixOptions,
     Proposal,
     Script,
     SegContext,
@@ -148,15 +149,16 @@ def _review_edits(old: Proposal, new: ProposalUpdate) -> list[tuple[str, str, An
     return edits
 
 
-async def _check_inputs(conn: Conn, run: RunRef) -> tuple[VoiceMode, list[Word], list[Segment]]:
-    """Voice and the preprocess words and segments the mechanical checks read."""
-    cur = await conn.execute("select voice, pre from runs where id = %s", (run.id,))
+async def _check_inputs(conn: Conn, run: RunRef) -> tuple[VoiceMode, FixOptions, list[Word], list[Segment]]:
+    """Voice, fix options and preprocess data the mechanical checks read."""
+    cur = await conn.execute("select voice, fix_options, pre from runs where id = %s", (run.id,))
     row = await cur.fetchone()
     assert row is not None
     pre = row["pre"] or {}
     voice: VoiceMode = row["voice"]
     return (
         voice,
+        FixOptions.model_validate(row["fix_options"] or {}),
         [Word.model_validate(w) for w in pre.get("words") or []],
         [Segment.model_validate(s) for s in pre.get("segments") or []],
     )
@@ -178,7 +180,7 @@ async def save_edit(conn: Conn, run: RunRef, update: ProposalUpdate) -> Proposal
     _, old = found
     _check_base(update.base_version, old)
     _check_trust(old, update)
-    voice, words, segments = await _check_inputs(conn, run)
+    voice, fix_options, words, segments = await _check_inputs(conn, run)
     checks = recheck(
         update.script,
         update.edit_plan,
@@ -189,6 +191,8 @@ async def save_edit(conn: Conn, run: RunRef, update: ProposalUpdate) -> Proposal
         run.duration_s,
         voice,
         VOICE_WPS,
+        fix_options,
+        "user",
     )
     new = old.model_copy(
         update={
@@ -240,7 +244,7 @@ async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> l
         raise NoProposal("run has no proposal yet")
     pid, proposal = found
     _check_base(base_version, proposal)
-    voice, words, segments = await _check_inputs(conn, run)
+    voice, fix_options, words, segments = await _check_inputs(conn, run)
     failed = next(
         (
             c
@@ -254,6 +258,8 @@ async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> l
                 run.duration_s,
                 voice,
                 VOICE_WPS,
+                fix_options,
+                proposal.source,
             )
             if not c.passed
         ),

@@ -13,8 +13,10 @@ from app.agent.agent import graph as studio_graph
 from app.agent.state import Decision
 from app.agent.tools.compare_frames import compare_frames
 from app.contracts.pipeline import (
+    Drop,
     EditPlan,
     EDLEntry,
+    FixOptions,
     Keyframe,
     PreprocessResult,
     Script,
@@ -146,11 +148,13 @@ class Scripted:
         plan: EditPlan,
         p_yes: float | dict[str, float] = 0.7,
         seg: SegContext | None = None,
+        transcripts: list[TranscriptContext] | None = None,
     ) -> None:
         self.script = script
         self.plan = plan
         self.p_yes = p_yes
         self.seg = seg or fresh_segment()
+        self.transcripts = list(transcripts or [TranscriptContext(steps=[], key_terms=[], drops=[])])
         self.log: list[str] = []
         self.messages: list[Any] = []
         self.tools: list[Any] = []
@@ -170,7 +174,7 @@ class Scripted:
         self.messages.append(messages)
         self.tools.append(tools)
         if schema.__name__ == "TranscriptContext":
-            return TranscriptContext(steps=[], key_terms=[], drops=[])
+            return self.transcripts.pop(0)
         if schema.__name__ == "Script":
             return self.script
         if schema.__name__ == "EditPlan":
@@ -250,6 +254,39 @@ def test_accepts_at_the_default_threshold() -> None:
     # No tool is offered: the client has no tool-call loop, and a tool-call answer would not parse.
     assert bound == []
     assert bundle.describes[0]["frames"] == ["gs://b/f1.jpg"]
+
+
+def test_disallowed_filler_drop_retries_transcript_context() -> None:
+    pre = clip()
+    bundle = Scripted(
+        script=good_script(pre),
+        plan=good_plan(pre),
+        transcripts=[
+            TranscriptContext(
+                steps=[],
+                key_terms=[],
+                drops=[Drop(span=(0.2, 0.4), kind="filler", reason="filler")],
+            ),
+            TranscriptContext(steps=[], key_terms=[], drops=[]),
+        ],
+    )
+    state = initial_state(REF, pre, fix_options=FixOptions(filler=False, retakes=False))
+    _compiled, raw = _run(bundle, state)
+
+    assert bundle.log.count("TranscriptContext") == 2
+    assert raw["transcript_ctx"].drops == []
+    first_transcript_messages = bundle.messages[0]
+    assert "Only propose drops of these kinds: none" in first_transcript_messages[0]["content"]
+    assert json.loads(first_transcript_messages[1]["content"])["allowed_drop_kinds"] == []
+    editor_body = json.loads(bundle.messages[-1][1]["content"])
+    assert editor_body["allowed"] == {"cut_idle_segments": True, "speed": True}
+
+
+def test_initial_state_carries_voice_and_fix_options() -> None:
+    state = initial_state(REF, clip(), voice="ai", fix_options=FixOptions(slow_parts=False))
+
+    assert state.voice == "ai"
+    assert state.fix_options == FixOptions(slow_parts=False)
 
 
 def test_rejection_below_the_threshold_returns_to_the_writer() -> None:
@@ -425,9 +462,13 @@ def test_fixture_json_loads_with_accepted_true() -> None:
 
 async def test_propose_returns_a_plan_the_edit_check_accepts() -> None:
     pre = clip()
-    bundle = Scripted(script=good_script(pre), plan=good_plan(pre), p_yes=0.7)
+    bundle = Scripted(script=good_script(pre, text="alpha bright beta"), plan=good_plan(pre), p_yes=0.7)
     storage = GcsStorage(bucket="b", emulator_host="localhost:9")
-    out = await MediaEngines(storage, bundle=bundle).propose(REF, pre)
+    out = await MediaEngines(storage, bundle=bundle).propose(
+        REF, pre, voice="ai", fix_options=FixOptions(slow_parts=False)
+    )
     assert out.accepted is True
-    assert out.script.blocks[0].text == "alpha beta"
+    assert out.script.blocks[0].text == "alpha bright beta"
     assert edl_valid(out.edit_plan, out.seg_contexts, pre.duration).passed is True
+    assert next(check for check in out.checks if check.name == "clean_only").passed is True
+    assert json.loads(bundle.messages[-1][1]["content"])["allowed"]["speed"] is False

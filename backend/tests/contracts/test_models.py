@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from app.auth.schemas import SignUp
 from app.contracts import enums
-from app.contracts.pipeline import AgentState, Proposal, SegContext, TranscriptContext, merge_by
+from app.contracts.pipeline import AgentState, FixOptions, Proposal, SegContext, TranscriptContext, merge_by
 from app.runs.schemas import RunCreate
 from app.shares.schemas import ShareCreate
 from app.videos.schemas import Page, Video
@@ -141,6 +141,12 @@ def test_run_create_requires_voice_id_iff_ai() -> None:
         RunCreate(mode="review", voice="ai")
     with pytest.raises(ValidationError):
         RunCreate(mode="review", voice="original", voice_id="voice-123")
+
+
+def test_run_create_defaults_every_fix_option_to_true() -> None:
+    body = RunCreate(mode="review", voice="original")
+
+    assert body.fix_options == FixOptions(pauses=True, filler=True, retakes=True, slow_parts=True)
 
 
 def test_share_create_defaults_to_link() -> None:

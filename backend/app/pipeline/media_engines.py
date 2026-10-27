@@ -11,11 +11,12 @@ from typing import Protocol, cast, runtime_checkable
 from app.agent.agent import Draft, build_graph, checkpointer, initial_state, invoke, to_output
 from app.agent.state import Bundle, make_call
 from app.contracts.enums import VoiceMode
-from app.contracts.pipeline import PreprocessResult, Proposal
+from app.contracts.pipeline import FixOptions, PreprocessResult, Proposal
 from app.pipeline import media
 from app.pipeline.engines import AgentOutput
 from app.pipeline.proposal_stub import stub_proposal
 from app.providers.bundle import Call, Clip, Providers
+from app.runs.checks import fix_options_respected
 from app.runs.lifecycle import RunRef
 from app.shared.storage import GcsStorage
 
@@ -25,10 +26,12 @@ class _CanSpeak(Protocol):
     def synthesize(self, call: Call, text: str, voice_id: str) -> Clip: ...
 
 
-def _propose(run: RunRef, pre: PreprocessResult, bundle: Bundle) -> Draft:
+def _propose(
+    run: RunRef, pre: PreprocessResult, bundle: Bundle, voice: VoiceMode, fix_options: FixOptions
+) -> Draft:
     raw = invoke(
         build_graph(checkpointer()),
-        initial_state(run, pre),
+        initial_state(run, pre, voice=voice, fix_options=fix_options),
         bundle,
         thread_id=str(run.id),
         workspace_id=str(run.workspace_id),
@@ -44,12 +47,26 @@ class MediaEngines:
     async def preprocess(self, run: RunRef, raw_uri: str) -> PreprocessResult:
         return await media.preprocess(self._storage, run, raw_uri)
 
-    async def propose(self, run: RunRef, pre: PreprocessResult) -> AgentOutput:
+    async def propose(
+        self,
+        run: RunRef,
+        pre: PreprocessResult,
+        *,
+        voice: VoiceMode = "original",
+        fix_options: FixOptions | None = None,
+    ) -> AgentOutput:
         bundle = self._bundle
         if bundle is None:
-            return stub_proposal(run, pre)
+            options = fix_options or FixOptions()
+            output = stub_proposal(run, pre)
+            state = initial_state(run, pre, voice=voice, fix_options=options).model_copy(
+                update={"transcript_ctx": output.transcript_ctx, "edit_plan": output.edit_plan}
+            )
+            return output.model_copy(update={"checks": [*output.checks, fix_options_respected(state)]})
         # Laya's decision and the graph's Decision are different classes; both expose p_yes.
-        draft = await asyncio.to_thread(_propose, run, pre, cast(Bundle, bundle))
+        draft = await asyncio.to_thread(
+            _propose, run, pre, cast(Bundle, bundle), voice, fix_options or FixOptions()
+        )
         return AgentOutput(
             script=draft.script,
             edit_plan=draft.edit_plan,

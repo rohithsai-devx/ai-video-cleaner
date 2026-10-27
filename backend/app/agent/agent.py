@@ -20,13 +20,14 @@ from app.agent.nodes.transcript_context import transcript_context
 from app.agent.nodes.video_editor import video_editor
 from app.agent.nodes.vlm_context import vlm_context
 from app.agent.state import Bundle, Ctx
-from app.contracts.enums import RunMode
+from app.contracts.enums import RunMode, VoiceMode
 from app.contracts.pipeline import (
     AgentState,
     CheckResult,
     Drop,
     EditPlan,
     EDLEntry,
+    FixOptions,
     Keyframe,
     PreprocessResult,
     Script,
@@ -54,6 +55,7 @@ _CHECKPOINT_TYPES = (
     ScriptBlock,
     EditPlan,
     EDLEntry,
+    FixOptions,
     CheckResult,
 )
 
@@ -100,14 +102,20 @@ class _Run(Protocol):
     def mode(self) -> RunMode: ...
 
 
-def initial_state(run: _Run, pre: PreprocessResult) -> AgentState:
-    # ponytail: voice stays original until the stage passes runs.voice. Render is unchanged.
+def initial_state(
+    run: _Run,
+    pre: PreprocessResult,
+    *,
+    voice: VoiceMode = "original",
+    fix_options: FixOptions | None = None,
+) -> AgentState:
     return AgentState(
         run_id=str(run.id),
         mode=run.mode,
-        voice="original",
+        voice=voice,
         voice_wps=VOICE_WPS,
         pre=pre,
+        fix_options=fix_options or FixOptions(),
     )
 
 
