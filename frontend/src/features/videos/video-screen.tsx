@@ -6,44 +6,43 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { $api } from "@/api/client";
+import type { components } from "@/api/generated/schema";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { SegmentedControl } from "@/ui/segmented-control";
 import { Skeleton } from "@/ui/skeleton";
-import { cx } from "@/ui/cx";
+import { Switch } from "@/ui/switch";
 import { runRequestBody, type Mode, type Voice } from "./run-request";
-import { formatDuration, statusBadge } from "./video-status";
+import { formatDuration } from "./video-status";
 
-const VOICES = [{ id: "default", label: "Default narrator" }] as const;
+export type ShareSlot = (video: {
+  videoId: string;
+  status: components["schemas"]["Video"]["status"];
+  title: string;
+  playbackUrl?: string | null;
+  originalUrl?: string | null;
+}) => ReactNode;
 
-const MODES: { id: Mode; label: string; hint: string }[] = [
-  {
-    id: "review",
-    label: "Let me review first",
-    hint: "See the script and every cut with its reason. Edit, then approve.",
-  },
-  {
-    id: "auto",
-    label: "Render automatically",
-    hint: "Skip review unless the agent flags something it is unsure about.",
-  },
-];
+const NARRATION = {
+  original: "Your own audio, with the cut parts removed. Nothing is re-recorded.",
+  ai: "The AI writes a clean script from what you said and reads it out. You can edit every line first.",
+} as const;
 
-export function VideoScreen({
-  id,
-  renderShare,
-}: {
-  id: string;
-  renderShare?: (v: { videoId: string; playbackUrl?: string | null }) => ReactNode;
-}) {
+export function VideoScreen({ id, renderShare }: { id: string; renderShare?: ShareSlot }) {
   const router = useRouter();
   const video = $api.useQuery("get", "/videos/{video_id}", { params: { path: { video_id: id } } });
   const start = $api.useMutation("post", "/videos/{video_id}/runs");
   const [mode, setMode] = useState<Mode>("review");
   const [voice, setVoice] = useState<Voice>("original");
-  const [voiceId, setVoiceId] = useState<string>(VOICES[0].id);
+  const [voiceId, setVoiceId] = useState("default");
+  const [failedPlaybackUrl, setFailedPlaybackUrl] = useState<string | null>(null);
 
   const v = video.data;
-  const badge = v ? statusBadge(v) : null;
+  const sourceUrl = v
+    ? v.status === "ready"
+      ? v.playback_url
+      : (v.original_url ?? v.playback_url)
+    : null;
 
   const queryClient = useQueryClient();
 
@@ -82,7 +81,7 @@ export function VideoScreen({
         <span className="truncate text-sm font-medium">{v?.title ?? ""}</span>
       </header>
 
-      <main className="mx-auto flex max-w-[1280px] flex-wrap items-start gap-8 px-4 py-8 sm:px-8">
+      <main className="mx-auto flex max-w-[1280px] flex-wrap items-start gap-8 px-6 py-8">
         <section className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
           {video.isPending ? (
             <>
@@ -95,15 +94,22 @@ export function VideoScreen({
             </p>
           ) : (
             <>
-              <div className="aspect-video overflow-hidden rounded-3xl bg-player">
-                {v.playback_url ? (
-                  <video
-                    src={v.playback_url}
-                    poster={v.poster_url ?? undefined}
-                    controls
-                    preload="metadata"
-                    className="size-full"
-                  />
+              <div className="aspect-video overflow-hidden rounded-[20px] bg-player">
+                {sourceUrl ? (
+                  failedPlaybackUrl === sourceUrl ? (
+                    <div className="relative flex size-full items-center justify-center text-sm text-white/70">
+                      Could not load this video.
+                    </div>
+                  ) : (
+                    <video
+                      src={sourceUrl}
+                      poster={v.poster_url ?? undefined}
+                      controls
+                      preload="metadata"
+                      className="size-full"
+                      onError={() => setFailedPlaybackUrl(sourceUrl)}
+                    />
+                  )
                 ) : (
                   <div className="relative flex size-full items-center justify-center text-sm text-white/70">
                     {v.poster_url ? (
@@ -120,93 +126,68 @@ export function VideoScreen({
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
-                <h1 className="m-0 flex-[1_1_320px] text-[22px] text-ink">{v.title}</h1>
-                {badge ? <Badge tone={badge.tone}>{badge.label}</Badge> : null}
-                <span className="font-mono">
-                  {[
-                    formatDuration(v.duration_s),
-                    v.width && v.height ? `${v.width} × ${v.height}` : "",
-                    v.fps ? `${Math.round(v.fps)} fps` : "",
-                  ]
-                    .filter(Boolean)
-                    .join(", ")}
-                </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="m-0 text-[26px] font-semibold text-ink">{v.title}</h1>
+                {v.status !== "ready" ? <Badge tone="neutral">Original recording</Badge> : null}
+                {v.duration_s != null || (v.width != null && v.height != null) ? (
+                  <span className="font-mono text-sm text-muted">
+                    {[
+                      formatDuration(v.duration_s),
+                      v.width != null && v.height != null ? `${v.width} × ${v.height}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </div>
-              {v.status === "uploaded" ? (
-                <p className="m-0 text-sm text-muted">
-                  This is your raw recording. Nothing has been changed yet.
-                </p>
-              ) : null}
+              <p className="m-0 text-sm text-muted">
+                Your recording is saved as it is. Cleaning makes a new version and never changes
+                this one.
+              </p>
+              {v.status === "ready"
+                ? renderShare?.({
+                    videoId: id,
+                    status: v.status,
+                    title: v.title,
+                    playbackUrl: v.playback_url,
+                    originalUrl: v.original_url,
+                  })
+                : null}
             </>
           )}
         </section>
 
-        {v?.status === "ready" ? (
-          renderShare?.({ videoId: id, playbackUrl: v.playback_url })
-        ) : v?.status === "uploaded" ? (
-          <aside className="flex min-w-0 flex-[1_1_360px] flex-col gap-6 rounded-3xl bg-accent p-8">
+        {v?.status === "uploaded" ? (
+          <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-6 rounded-3xl border border-line bg-surface p-7">
             <div className="flex flex-col gap-1.5">
-              <h2 className="m-0 text-3xl">Process with AI</h2>
-              <p className="m-0 text-sm leading-normal text-ink/80">
-                The agent writes a clean script and a cut plan from what you said and showed.
+              <h2 className="m-0 text-[28px] font-semibold">Clean this video</h2>
+              <p className="m-0 text-sm leading-normal text-muted">
+                Pick what the AI may change. You&apos;ll see every change on a timeline before
+                anything is final.
               </p>
             </div>
 
-            <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0">
-              <legend className="mb-2.5 text-sm font-medium">After the agent finishes</legend>
-              {MODES.map((m) => (
-                <label
-                  key={m.id}
-                  className={cx(
-                    "flex cursor-pointer flex-col gap-1 rounded-xl border-2 p-4",
-                    "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink",
-                    mode === m.id ? "border-ink bg-white" : "border-transparent bg-white/45",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="mode"
-                    value={m.id}
-                    checked={mode === m.id}
-                    onChange={() => setMode(m.id)}
-                    className="sr-only"
-                  />
-                  <span className="text-[15px] font-medium">{m.label}</span>
-                  <span className="text-[13px] leading-snug text-ink/80">{m.hint}</span>
-                </label>
-              ))}
-            </fieldset>
+            <div className="flex flex-col gap-2">
+              <p className="m-0 text-[13px] font-medium uppercase tracking-wide text-muted">
+                The AI will
+              </p>
+            </div>
 
-            <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0">
-              <legend className="mb-2.5 text-sm font-medium">Voice</legend>
-              <div className="flex gap-1 rounded-xl bg-white/40 p-1">
-                {(
-                  [
-                    { id: "original", label: "My voice" },
-                    { id: "ai", label: "AI voiceover" },
-                  ] as const
-                ).map((o) => (
-                  <label
-                    key={o.id}
-                    className={cx(
-                      "flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-lg px-3 text-sm font-medium",
-                      "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink",
-                      voice === o.id ? "bg-white text-ink" : "text-ink/80",
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="voice"
-                      value={o.id}
-                      checked={voice === o.id}
-                      onChange={() => setVoice(o.id)}
-                      className="sr-only"
-                    />
-                    {o.label}
-                  </label>
-                ))}
-              </div>
+            <div className="flex flex-col gap-2">
+              <p className="m-0 text-[13px] font-medium uppercase tracking-wide text-muted">
+                Narration
+              </p>
+              <SegmentedControl
+                name="voice"
+                legend="Narration"
+                value={voice}
+                onChange={(value) => setVoice(value as Voice)}
+                options={[
+                  { value: "original", label: "Keep my voice" },
+                  { value: "ai", label: "AI voice" },
+                ]}
+              />
+              <p className="m-0 text-[13px] leading-normal text-muted">{NARRATION[voice]}</p>
               {voice === "ai" ? (
                 <>
                   <label htmlFor="voice-id" className="text-[13px] text-ink/80">
@@ -218,15 +199,22 @@ export function VideoScreen({
                     onChange={(e) => setVoiceId(e.target.value)}
                     className="h-11 rounded-xl border border-line-strong bg-white px-2.5 text-sm text-ink"
                   >
-                    {VOICES.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
+                    <option value="default">Default narrator</option>
                   </select>
                 </>
               ) : null}
-            </fieldset>
+            </div>
+
+            <Switch
+              label="Show me before it renders"
+              hint={
+                mode === "review"
+                  ? "You get the editor with every change marked. Nothing renders until you say so."
+                  : "Renders straight away. If the AI is unsure about something, it stops and asks you first."
+              }
+              checked={mode === "review"}
+              onChange={(event) => setMode(event.currentTarget.checked ? "review" : "auto")}
+            />
 
             {start.isError ? (
               <p role="alert" className="m-0 text-sm text-danger">
@@ -235,11 +223,8 @@ export function VideoScreen({
             ) : null}
             <Button onClick={submit} disabled={start.isPending} className="h-12 text-[15px]">
               <Sparkle size={18} aria-hidden="true" />
-              {start.isPending ? "Starting…" : "Process with AI"}
+              {start.isPending ? "Starting…" : "Clean this video"}
             </Button>
-            <p className="m-0 text-[13px] text-ink/80">
-              Usually a few minutes for a recording this long.
-            </p>
           </aside>
         ) : null}
       </main>
