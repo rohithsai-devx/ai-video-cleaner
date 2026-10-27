@@ -239,6 +239,37 @@ async def test_unknown_ids_and_auth(api: httpx.AsyncClient) -> None:
     assert (await api.get("/s/doesnotexist0")).status_code == 404
 
 
+async def test_voice_list_requires_auth_and_returns_configured_default(api: httpx.AsyncClient) -> None:
+    assert (await api.get("/voices")).status_code == 401
+
+    h = await _user(api)
+    r = await api.get("/voices", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "default_voice_id": get_settings().openai_speech_voice,
+        "voices": [
+            {
+                "id": "coral",
+                "label": "Coral",
+                "hint": "Warm, calm",
+                "sample_path": "/voice-samples/coral.mp3",
+            },
+            {
+                "id": "ash",
+                "label": "Ash",
+                "hint": "Clear, steady",
+                "sample_path": "/voice-samples/ash.mp3",
+            },
+            {
+                "id": "sage",
+                "label": "Sage",
+                "hint": "Neutral, crisp",
+                "sample_path": "/voice-samples/sage.mp3",
+            },
+        ],
+    }
+
+
 async def test_uploaded_rejects_overlong_recording(api: httpx.AsyncClient, storage: FakeStorage) -> None:
     h = await _user(api)
     vid = (await api.post("/videos", json={"title": "Long"}, headers=h)).json()["video_id"]

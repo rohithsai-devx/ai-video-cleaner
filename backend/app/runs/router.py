@@ -23,7 +23,10 @@ from app.runs.schemas import (
     RunCreate,
     RunCreated,
     RunSummary,
+    VoiceList,
+    VoiceOption,
 )
+from app.shared.config import VOICES, get_settings
 from app.shared.db import tenant_tx
 from app.shared.errors import not_found
 from app.shared.events import channel, get_redis, publish_all
@@ -33,6 +36,14 @@ router = APIRouter()
 
 
 _TERMINAL = ("done", "failed", "cancelled")
+
+
+@router.get("/voices", tags=["runs"])
+async def list_voices(_: CurrentUser) -> VoiceList:
+    return VoiceList(
+        default_voice_id=get_settings().openai_speech_voice,
+        voices=[VoiceOption.model_validate(voice) for voice in VOICES],
+    )
 
 
 @contextmanager

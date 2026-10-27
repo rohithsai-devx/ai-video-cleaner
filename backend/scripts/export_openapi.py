@@ -24,6 +24,7 @@ REQUIRED: set[tuple[str, str]] = {
     ("get", "/videos"),
     ("get", "/videos/{}"),
     ("post", "/videos/{}/runs"),
+    ("get", "/voices"),
     ("get", "/runs/{}"),
     ("get", "/runs/{}/events"),
     ("get", "/runs/{}/proposal"),

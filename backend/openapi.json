@@ -1460,6 +1460,55 @@
         },
         "title": "VideoUploaded",
         "type": "object"
+      },
+      "VoiceList": {
+        "properties": {
+          "default_voice_id": {
+            "title": "Default Voice Id",
+            "type": "string"
+          },
+          "voices": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceOption"
+            },
+            "title": "Voices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "default_voice_id",
+          "voices"
+        ],
+        "title": "VoiceList",
+        "type": "object"
+      },
+      "VoiceOption": {
+        "properties": {
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sample_path": {
+            "title": "Sample Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "hint",
+          "sample_path"
+        ],
+        "title": "VoiceOption",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2294,6 +2343,32 @@
         "summary": "Confirm Upload",
         "tags": [
           "videos"
+        ]
+      }
+    },
+    "/voices": {
+      "get": {
+        "operationId": "list_voices_voices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Voices",
+        "tags": [
+          "runs"
         ]
       }
     }

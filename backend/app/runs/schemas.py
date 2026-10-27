@@ -16,6 +16,18 @@ class RunSummary(BaseModel):
     stage: str | None = None
 
 
+class VoiceOption(BaseModel):
+    id: str
+    label: str
+    hint: str
+    sample_path: str
+
+
+class VoiceList(BaseModel):
+    default_voice_id: str
+    voices: list[VoiceOption]
+
+
 class RunCreate(BaseModel):
     mode: RunMode
     voice: VoiceMode

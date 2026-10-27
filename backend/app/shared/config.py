@@ -12,6 +12,13 @@ _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 # Mechanical global limit (phase 2 decision): not an env setting, so a deployment cannot drift.
 MAX_RECORDING_SECONDS = 900
 
+# Keep this provider catalog as plain data so shared configuration does not depend on API schemas.
+VOICES: tuple[dict[str, str], ...] = (
+    {"id": "coral", "label": "Coral", "hint": "Warm, calm", "sample_path": "/voice-samples/coral.mp3"},
+    {"id": "ash", "label": "Ash", "hint": "Clear, steady", "sample_path": "/voice-samples/ash.mp3"},
+    {"id": "sage", "label": "Sage", "hint": "Neutral, crisp", "sample_path": "/voice-samples/sage.mp3"},
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore")
