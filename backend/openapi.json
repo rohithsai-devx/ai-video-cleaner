@@ -1328,6 +1328,17 @@
             ],
             "title": "Duration S"
           },
+          "estimated_run_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Run Seconds"
+          },
           "fps": {
             "anyOf": [
               {

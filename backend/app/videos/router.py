@@ -3,7 +3,9 @@
 import base64
 import binascii
 import logging
+import math
 from datetime import datetime
+from statistics import median
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -44,6 +46,7 @@ def to_video(row: dict[str, Any], playback_url: str | None = None, poster_url: s
         title=row["title"],
         status=row["status"],
         duration_s=float(row["duration_s"]) if row["duration_s"] is not None else None,
+        estimated_run_seconds=row.get("estimated_run_seconds"),
         width=row["width"],
         height=row["height"],
         fps=float(row["fps"]) if row["fps"] is not None else None,
@@ -194,6 +197,43 @@ async def list_videos(
 async def get_video(video_id: UUID, user_id: CurrentUser, storage: StorageDep) -> Video:
     async with tenant_tx(user_id) as conn:
         row = await fetch_video(conn, video_id)
+        if row is not None:
+            row["estimated_run_seconds"] = await _estimate_run_seconds(
+                conn, row["workspace_id"], row["duration_s"]
+            )
     if row is None:
         raise not_found()
     return await video_with_playback(storage, row)
+
+
+async def _estimate_run_seconds(conn: Conn, workspace_id: UUID, duration_s: float | None) -> int | None:
+    if duration_s is None:
+        return None
+
+    cur = await conn.execute(
+        "with recent as ("
+        " select r.started_at, r.finished_at, source.duration_s"
+        " from runs r join videos source on source.id = r.video_id and source.workspace_id = r.workspace_id"
+        " where r.workspace_id = %s and r.status = 'done'"
+        " order by r.finished_at desc limit 20"
+        ") select started_at, finished_at, duration_s from recent",
+        (workspace_id,),
+    )
+    rows = await cur.fetchall()
+    rates: list[float] = []
+    for run in rows:
+        source_duration = run["duration_s"]
+        started_at, finished_at = run["started_at"], run["finished_at"]
+        if (
+            source_duration is None
+            or float(source_duration) <= 0
+            or started_at is None
+            or finished_at is None
+        ):
+            continue
+        elapsed_s = (finished_at - started_at).total_seconds()
+        if elapsed_s >= 0:
+            rates.append(elapsed_s / float(source_duration))
+    if not rates:
+        return None
+    return math.ceil(float(duration_s) * median(rates))

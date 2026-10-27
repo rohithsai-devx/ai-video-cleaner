@@ -792,6 +792,8 @@ export interface components {
             current_run?: components["schemas"]["RunSummary"] | null;
             /** Duration S */
             duration_s?: number | null;
+            /** Estimated Run Seconds */
+            estimated_run_seconds?: number | null;
             /** Fps */
             fps?: number | null;
             /** Height */

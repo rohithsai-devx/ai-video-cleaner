@@ -38,6 +38,7 @@ class Video(BaseModel):
     title: str
     status: VideoStatus
     duration_s: float | None = None
+    estimated_run_seconds: int | None = None
     width: int | None = None
     height: int | None = None
     fps: float | None = None

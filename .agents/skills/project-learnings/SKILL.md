@@ -72,3 +72,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** Python leaves an `__pycache__` directory under the deleted package, and the layout check still sees the directory.
 - **Fix:** remove stale package bytecode directories when deleting the package.
 - **Takeaway:** rerun the layout check after package deletion and clean generated cache directories before diagnosing a source layout issue.
+
+### Psycopg returns numeric durations as Decimal (2026-10-27)
+- **Symptom:** multiplying a video duration by a floating-point median raises a Decimal/float `TypeError`.
+- **Root cause:** psycopg decodes PostgreSQL `numeric` columns as `Decimal`, while elapsed-time ratios are floats.
+- **Fix:** convert database durations to `float` before combining them with floating-point rates.
+- **Takeaway:** normalize numeric database values before mixing them with computed floats.

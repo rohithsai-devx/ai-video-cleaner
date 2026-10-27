@@ -2,12 +2,14 @@
 
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 
 from app.contracts.events import RunStatusEvent
+from app.runs import lifecycle
 from app.shared.config import MAX_RECORDING_SECONDS, get_settings
 
 # ruff: noqa: F401, F811  (fixtures come from tests.factories and are requested by name)
@@ -154,6 +156,69 @@ async def test_run_history_is_newest_first_and_tenant_scoped(
 
     other_workspace = await _user(api)
     assert (await api.get(path, headers=other_workspace)).status_code == 404
+
+
+async def test_video_estimate_is_null_without_a_done_run(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h = await _user(api)
+    video = await _uploaded_video(api, h, storage)
+    response = await api.get(f"/videos/{video['id']}", headers=h)
+    assert response.status_code == 200
+    assert response.json()["estimated_run_seconds"] is None
+
+
+async def test_video_estimate_uses_median_workspace_run_rate(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h = await _user(api)
+
+    async def uploaded(duration_s: float | None) -> dict[str, Any]:
+        created = await api.post("/videos", json={}, headers=h)
+        video_id = created.json()["video_id"]
+        storage.objects.add(storage.raw_uri(video_id))
+        response = await api.post(
+            f"/videos/{video_id}/uploaded",
+            json={"duration_s": duration_s} if duration_s is not None else {},
+            headers=h,
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    async def completed_run(video: dict[str, Any], elapsed_s: int, day: int) -> None:
+        response = await api.post(
+            f"/videos/{video['id']}/runs",
+            json={"mode": "auto", "voice": "original"},
+            headers=h,
+        )
+        assert response.status_code == 202, response.text
+        run_id = uuid.UUID(response.json()["run_id"])
+        output_uri = f"gs://test-bucket/runs/{run_id}/final.mp4"
+        storage.objects.add(output_uri)
+        async with worker_tx(video["workspace_id"]) as worker:
+            for target in ("preprocessing", "agent_running", "approved", "postprocessing", "done"):
+                run = await lifecycle.load(worker, run_id)
+                assert run is not None
+                kwargs = {"output_uri": output_uri} if target == "done" else {}
+                await lifecycle.advance(worker, run, target, **kwargs)  # type: ignore[arg-type]
+            started = datetime(2025, 1, day, tzinfo=UTC)
+            await worker.execute(
+                "update runs set started_at = %s, finished_at = %s where id = %s",
+                (started, started + timedelta(seconds=elapsed_s), run_id),
+            )
+
+    await completed_run(await uploaded(10), elapsed_s=20, day=1)
+    await completed_run(await uploaded(20), elapsed_s=10, day=2)
+
+    target = await uploaded(62)
+    response = await api.get(f"/videos/{target['id']}", headers=h)
+    assert response.status_code == 200, response.text
+    assert response.json()["estimated_run_seconds"] == 78
+
+    missing_duration = await uploaded(None)
+    response = await api.get(f"/videos/{missing_duration['id']}", headers=h)
+    assert response.status_code == 200, response.text
+    assert response.json()["estimated_run_seconds"] is None
 
 
 async def test_run_requires_uploaded_video(api: httpx.AsyncClient) -> None:
