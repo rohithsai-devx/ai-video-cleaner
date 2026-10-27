@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 import psycopg
@@ -82,11 +83,22 @@ class FakeStorage:
     async def exists(self, uri: str) -> bool:
         return uri in self.objects
 
-    async def sign(self, *uris: str | None) -> list[str | None]:
-        return [
-            f"http://fake-play/{uri.partition('://')[2].partition('/')[2]}" if uri in self.objects else None
-            for uri in uris
-        ]
+    async def sign(
+        self, *uris: str | None, download_names: list[str | None] | None = None
+    ) -> list[str | None]:
+        names = download_names if download_names is not None else [None] * len(uris)
+        if len(names) != len(uris):
+            raise ValueError("download_names must contain one entry per URI")
+        signed = []
+        for uri, name in zip(uris, names, strict=True):
+            if uri not in self.objects:
+                signed.append(None)
+                continue
+            url = f"http://fake-play/{uri.partition('://')[2].partition('/')[2]}"
+            if name is not None:
+                url += "?" + urlencode({"response-content-disposition": f'attachment; filename="{name}"'})
+            signed.append(url)
+        return signed
 
 
 @pytest.fixture

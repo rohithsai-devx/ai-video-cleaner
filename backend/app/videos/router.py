@@ -4,7 +4,9 @@ import base64
 import binascii
 import logging
 import math
+import re
 from datetime import datetime
+from pathlib import PurePosixPath
 from statistics import median
 from typing import Annotated, Any
 from uuid import UUID
@@ -68,8 +70,36 @@ async def video_with_playback(storage: GcsStorage, row: dict[str, Any]) -> Video
         media = row.get("raw_uri")  # no output yet: play the recording
     else:
         media = None
-    url, poster = await storage.sign(media, row.get("poster_uri"))
-    return to_video(row, url, poster)
+    raw_uri = row.get("raw_uri")
+    output_uri = row.get("output_uri") if row["status"] == "ready" else None
+    slug = _filename_slug(row["title"])
+    extension = PurePosixPath(raw_uri).suffix.lstrip(".") if raw_uri else ""
+    original_download_name = f"{slug}-original.{extension}" if raw_uri and extension else None
+    playback_url, poster_url, original_url, download_url, original_download_url = await storage.sign(
+        media,
+        row.get("poster_uri"),
+        raw_uri,
+        output_uri,
+        raw_uri,
+        download_names=[
+            None,
+            None,
+            None,
+            f"{slug}.mp4" if output_uri else None,
+            original_download_name,
+        ],
+    )
+    return to_video(row, playback_url, poster_url).model_copy(
+        update={
+            "original_url": original_url,
+            "download_url": download_url,
+            "original_download_url": original_download_url,
+        }
+    )
+
+
+def _filename_slug(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "video"
 
 
 @router.post("/videos", status_code=status.HTTP_201_CREATED)

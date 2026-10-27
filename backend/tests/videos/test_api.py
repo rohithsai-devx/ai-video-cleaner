@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -63,6 +64,12 @@ async def test_video_poster_url_after_upload(api: httpx.AsyncClient, storage: Fa
     r = await api.post(f"/videos/{vid}/uploaded", headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["poster_url"] == f"http://fake-play/videos/{vid}/poster.jpg"
+    assert r.json()["original_url"] == f"http://fake-play/videos/{vid}/raw.webm"
+    assert r.json()["download_url"] is None
+    original_params = parse_qs(urlparse(r.json()["original_download_url"]).query)
+    assert original_params["response-content-disposition"] == [
+        'attachment; filename="untitled-recording-original.webm"'
+    ]
     assert (await api.get(f"/videos/{vid}", headers=h)).json()["poster_url"] == r.json()["poster_url"]
     assert (await api.get("/videos", headers=h)).json()["items"][0]["poster_url"] == r.json()["poster_url"]
 
@@ -298,6 +305,15 @@ async def test_share_and_public_page(api: httpx.AsyncClient, storage: FakeStorag
     assert r.json() == {"title": "Demo", "playback_url": f"http://fake-play/{key}", "poster_url": None}
     v = (await api.get(f"/videos/{video['id']}", headers=h)).json()
     assert v["playback_url"] == f"http://fake-play/{key}"
+    assert v["original_url"] == f"http://fake-play/videos/{video['id']}/raw.webm"
+    assert (
+        v["download_url"]
+        == f"http://fake-play/{key}?response-content-disposition=attachment%3B+filename%3D%22demo.mp4%22"
+    )
+    assert v["original_download_url"] == (
+        f"http://fake-play/videos/{video['id']}/raw.webm?"
+        "response-content-disposition=attachment%3B+filename%3D%22demo-original.webm%22"
+    )
 
 
 async def test_other_tenant_gets_404(api: httpx.AsyncClient, storage: FakeStorage) -> None:

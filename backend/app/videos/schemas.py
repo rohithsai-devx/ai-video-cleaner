@@ -47,3 +47,6 @@ class Video(BaseModel):
     current_run: RunSummary | None = None
     playback_url: str | None = None
     poster_url: str | None = None
+    original_url: str | None = None
+    download_url: str | None = None
+    original_download_url: str | None = None

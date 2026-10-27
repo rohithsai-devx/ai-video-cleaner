@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -96,6 +97,18 @@ async def test_put_then_sign_reads_back(storage: GcsStorage):
     assert url is not None and (await _get(url)).content == b"seeded"
     with pytest.raises(ValueError):
         await storage.put("gs://someone-else/x", b"x", "video/webm")
+
+
+@pytest.mark.asyncio
+async def test_sign_can_set_attachment_filename(storage: GcsStorage):
+    uri = storage.raw_uri(uuid.uuid4())
+    await storage.put(uri, b"seeded", "video/webm")
+
+    (url,) = await storage.sign(uri, download_names=["my-video-original.webm"])
+
+    assert url is not None
+    params = parse_qs(urlparse(url).query)
+    assert params["response-content-disposition"] == ['attachment; filename="my-video-original.webm"']
 
 
 def test_upload_session_sends_the_frontend_origin(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -790,6 +790,8 @@ export interface components {
              */
             created_at: string;
             current_run?: components["schemas"]["RunSummary"] | null;
+            /** Download Url */
+            download_url?: string | null;
             /** Duration S */
             duration_s?: number | null;
             /** Estimated Run Seconds */
@@ -800,6 +802,10 @@ export interface components {
             height?: number | null;
             /** Id */
             id: string;
+            /** Original Download Url */
+            original_download_url?: string | null;
+            /** Original Url */
+            original_url?: string | null;
             /** Playback Url */
             playback_url?: string | null;
             /** Poster Url */

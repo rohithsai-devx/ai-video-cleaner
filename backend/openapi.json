@@ -1317,6 +1317,17 @@
               }
             ]
           },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url"
+          },
           "duration_s": {
             "anyOf": [
               {
@@ -1364,6 +1375,28 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "original_download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Download Url"
+          },
+          "original_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Url"
           },
           "playback_url": {
             "anyOf": [

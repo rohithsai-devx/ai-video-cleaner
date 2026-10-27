@@ -14,7 +14,7 @@ MP4 is never loaded into memory.
 import asyncio
 from datetime import timedelta
 from os import PathLike, fspath
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from uuid import UUID
 
 import google.auth
@@ -99,9 +99,14 @@ class GcsStorage:
             return False
         return await asyncio.to_thread(self._blob(key).exists)
 
-    async def sign(self, *uris: str | None) -> list[str | None]:
-        """Signed read URLs, in order; None for None, a missing object, or a foreign bucket."""
-        return await asyncio.to_thread(self._sign_all, list(uris))
+    async def sign(
+        self, *uris: str | None, download_names: list[str | None] | None = None
+    ) -> list[str | None]:
+        """Signed read URLs, in order; None for absent objects. Names request attachment downloads."""
+        names: list[str | None] = download_names if download_names is not None else [None] * len(uris)
+        if len(names) != len(uris):
+            raise ValueError("download_names must contain one entry per URI")
+        return await asyncio.to_thread(self._sign_all, list(uris), names)
 
     async def copy(self, src_uri: str, dst_uri: str) -> None:
         """Copy within this bucket (the fixture render copies the raw object to the output URI)."""
@@ -157,37 +162,48 @@ class GcsStorage:
         bucket = self.client.bucket(self.bucket_name)
         bucket.copy_blob(bucket.blob(src), bucket, dst)
 
-    def _sign_all(self, uris: list[str | None]) -> list[str | None]:
+    def _sign_all(self, uris: list[str | None], download_names: list[str | None]) -> list[str | None]:
         out: list[str | None] = []
-        for uri in uris:
+        for uri, download_name in zip(uris, download_names, strict=True):
             key = self._own_key(uri) if uri else None
             if key is None:
                 out.append(None)
                 continue
             try:
-                out.append(self._playback_url(key))
+                out.append(self._playback_url(key, download_name=download_name))
             except NotFound:
                 out.append(None)
         return out
 
-    def _playback_url(self, key: str, ttl: timedelta = timedelta(hours=1)) -> str:
+    def _playback_url(
+        self, key: str, ttl: timedelta = timedelta(hours=1), download_name: str | None = None
+    ) -> str:
         """Time-limited read URL. Raises NotFound if the object is missing."""
         blob = self.client.bucket(self.bucket_name).get_blob(key)
         if blob is None:
             raise NotFound(f"gs://{self.bucket_name}/{key}")
         if self.emulator_url:
             obj = quote(key, safe="")
-            return f"{self.emulator_url}/storage/v1/b/{self.bucket_name}/o/{obj}?alt=media"
+            params = {"alt": "media"}
+            if download_name is not None:
+                params["response-content-disposition"] = f'attachment; filename="{download_name}"'
+            return f"{self.emulator_url}/storage/v1/b/{self.bucket_name}/o/{obj}?{urlencode(params)}"
         # key-file credentials sign locally; token-only ones (Cloud Run) sign via IAM signBlob
         creds = self._creds
+        response_disposition = (
+            f'attachment; filename="{download_name}"' if download_name is not None else None
+        )
         if creds is None or hasattr(creds, "signer"):
-            return blob.generate_signed_url(version="v4", expiration=ttl, method="GET")
+            return blob.generate_signed_url(
+                version="v4", expiration=ttl, method="GET", response_disposition=response_disposition
+            )
         if not creds.valid:
             creds.refresh(Request())  # type: ignore[no-untyped-call]
         return blob.generate_signed_url(
             version="v4",
             expiration=ttl,
             method="GET",
+            response_disposition=response_disposition,
             service_account_email=creds.service_account_email,
             access_token=creds.token,
         )
