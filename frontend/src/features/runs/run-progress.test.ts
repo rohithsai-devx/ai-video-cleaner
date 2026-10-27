@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { components } from "@/api/generated/schema";
-import { applyRunEvent, buildSteps, isTerminal, logLine } from "./run-progress";
+import { applyRunEvent, buildSteps, isTerminal, runChoicesLabel, runHeader } from "./run-progress";
 
 type Run = components["schemas"]["Run"];
 const run: Run = {
@@ -15,77 +15,151 @@ const run: Run = {
   created_at: "2026-10-18T10:00:00Z",
 };
 
+const states = (value: Run) => buildSteps(value).map((step) => step.state);
+
 describe("applyRunEvent", () => {
   it("applies status, proposal flags, failure and done onto the cached run", () => {
-    let r = applyRunEvent(run, {
+    let current = applyRunEvent(run, {
       type: "run.status",
       data: { status: "agent_running", stage: "agent" },
     });
-    expect(r).toMatchObject({ status: "agent_running", stage: "agent" });
-    r = applyRunEvent(r, {
+    expect(current).toMatchObject({ status: "agent_running", stage: "agent" });
+    current = applyRunEvent(current, {
       type: "run.proposal_ready",
       data: { version: 1, flags: ["f"], auto_approved: false },
     });
-    expect(r.flags).toEqual(["f"]);
-    const err = { stage: "render", message: "boom", retryable: true };
-    expect(applyRunEvent(r, { type: "run.failed", data: err })).toMatchObject({
+    expect(current.flags).toEqual(["f"]);
+    const error = { stage: "4", message: "boom", retryable: true };
+    expect(applyRunEvent(current, { type: "run.failed", data: error })).toMatchObject({
       status: "failed",
-      error: err,
+      error,
     });
     expect(
-      applyRunEvent(r, { type: "run.done", data: { video_id: "v1", output_uri: "x" } }).status,
+      applyRunEvent(current, { type: "run.done", data: { video_id: "v1", output_uri: "x" } })
+        .status,
     ).toBe("done");
   });
 });
 
 describe("isTerminal", () => {
   it("is true only for done, failed and cancelled", () => {
-    expect(["done", "failed", "cancelled"].map((s) => isTerminal(s as Run["status"]))).toEqual([
-      true,
-      true,
-      true,
-    ]);
+    expect(
+      ["done", "failed", "cancelled"].map((status) => isTerminal(status as Run["status"])),
+    ).toEqual([true, true, true]);
     expect(isTerminal("awaiting_review")).toBe(false);
   });
 });
 
 describe("buildSteps", () => {
-  it("marks earlier steps done and the current one active", () => {
-    const steps = buildSteps({ ...run, status: "agent_running" });
-    expect(steps.map((s) => s.state)).toEqual(["done", "done", "active", "todo", "todo"]);
+  it.each([
+    ["queued", ["current", "current", "next", "next"]],
+    ["preprocessing", ["current", "current", "next", "next"]],
+    ["agent_running", ["done", "done", "current", "next"]],
+    ["awaiting_review", ["done", "done", "done", "done"]],
+    ["approved", ["done", "done", "done", "current"]],
+    ["postprocessing", ["done", "done", "done", "current"]],
+    ["done", ["done", "done", "done", "done"]],
+  ] as const)("maps %s to the four user steps", (status, expected) => {
+    expect(states({ ...run, status })).toEqual(expected);
   });
-  it("waits at review without pulsing and skips it in auto mode", () => {
-    expect(buildSteps({ ...run, status: "awaiting_review" })[3]).toMatchObject({
-      state: "active",
-      waiting: true,
+
+  it("uses the screen copy and details for a running proposal", () => {
+    expect(buildSteps({ ...run, status: "agent_running" })).toEqual([
+      {
+        label: "Listening to your narration",
+        detail: "Found what you said and when you said it.",
+        state: "done",
+      },
+      {
+        label: "Watching your screen",
+        detail: "Found the parts of your screen recording.",
+        state: "done",
+      },
+      {
+        label: "Planning the cuts",
+        detail: "Choosing what to remove, speed up or keep.",
+        state: "current",
+      },
+      { label: "Getting it ready for you", detail: "Next", state: "next" },
+    ]);
+  });
+
+  it("shows approved changes and render progress with the required details", () => {
+    expect(buildSteps({ ...run, status: "awaiting_review" }).map((step) => step.detail)).toEqual([
+      "Found what you said and when you said it.",
+      "Found the parts of your screen recording.",
+      "Chose what to remove, speed up or keep.",
+      "Lined every change up on the timeline.",
+    ]);
+    expect(buildSteps({ ...run, status: "postprocessing" })[3]).toEqual({
+      label: "Getting it ready for you",
+      detail: "Rendering your video.",
+      state: "current",
     });
-    expect(buildSteps({ ...run, mode: "auto", status: "postprocessing" })[3].label).toBe(
-      "Your review (skipped)",
-    );
   });
-  it("marks the failed step", () => {
-    const steps = buildSteps({
+
+  it.each([
+    ["1", ["failed", "next", "next", "next"]],
+    ["3", ["done", "done", "failed", "next"]],
+    ["4", ["done", "done", "done", "failed"]],
+  ] as const)("marks only step %s as failed", (stage, expected) => {
+    const failedRun: Run = {
       ...run,
       status: "failed",
-      error: { stage: "render", message: "x", retryable: false },
-    });
-    expect(steps[4].state).toBe("failed");
+      error: { stage, message: "The safe explanation.", retryable: false },
+    };
+    expect(states(failedRun)).toEqual(expected);
+    expect(buildSteps(failedRun).find((step) => step.state === "failed")?.detail).toBe(
+      "This step stopped. Nothing you did caused it.",
+    );
   });
-  it("completes everything when done", () => {
-    expect(buildSteps({ ...run, status: "done" }).every((s) => s.state === "done")).toBe(true);
+
+  it("keeps a cancelled run at its last completed point without a current step", () => {
+    const cancelled = buildSteps({ ...run, status: "cancelled", stage: "agent" });
+    expect(cancelled.map((step) => step.state)).toEqual(["done", "done", "next", "next"]);
+    expect(cancelled.some((step) => step.state === "current")).toBe(false);
   });
 });
 
-describe("logLine", () => {
-  it("formats events for the activity feed without em-dashes", () => {
+describe("runHeader", () => {
+  it.each([
+    ["queued", null, "Cleaning your video", "Step 1 of 4"],
+    ["preprocessing", null, "Cleaning your video", "Step 1 of 4"],
+    ["agent_running", null, "Cleaning your video", "Step 3 of 4"],
+    ["awaiting_review", null, "Ready for you", "Nothing renders until you approve."],
+    ["approved", null, "Cleaning your video", "Step 4 of 4"],
+    ["postprocessing", null, "Cleaning your video", "Step 4 of 4"],
+    ["done", null, "Ready for you", "Your video is ready."],
+    [
+      "failed",
+      { stage: "3", message: "safe", retryable: true },
+      "Cleaning stopped",
+      "Step 3 of 4 didn't finish.",
+    ],
+    ["cancelled", null, "Cleaning stopped", "You stopped this run. The recording is safe."],
+  ] as const)("describes %s without internal stage names", (status, error, title, detail) => {
+    expect(runHeader({ ...run, status, error })).toEqual({ title, detail });
+  });
+
+  it("uses the failure stage from the safe error event", () => {
     expect(
-      logLine({ type: "run.status", data: { status: "preprocessing", stage: "preprocess" } }),
-    ).toBe("run.status preprocessing / preprocess");
-    expect(
-      logLine({
-        type: "run.proposal_ready",
-        data: { version: 2, flags: ["a", "b"], auto_approved: false },
+      runHeader({
+        ...run,
+        status: "failed",
+        error: { stage: "4", message: "x", retryable: false },
       }),
-    ).toBe("run.proposal_ready v2, 2 flags");
+    ).toEqual({
+      title: "Cleaning stopped",
+      detail: "Step 4 of 4 didn't finish.",
+    });
+  });
+});
+
+describe("runChoicesLabel", () => {
+  it("uses plain words for the voice and render choice", () => {
+    expect(runChoicesLabel(run)).toBe("My voice · I review first");
+    expect(runChoicesLabel({ ...run, voice: "ai", mode: "auto" })).toBe(
+      "AI voice · Renders straight away",
+    );
   });
 });

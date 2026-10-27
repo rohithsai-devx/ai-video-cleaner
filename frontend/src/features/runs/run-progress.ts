@@ -1,13 +1,10 @@
-import type { RunEvent } from "@/api/events";
 import type { components } from "@/api/generated/schema";
+import type { Step } from "@/ui/stepper";
+import type { RunEvent } from "@/api/events";
 
 type Run = components["schemas"]["Run"];
-type Status = Run["status"];
 
-export type StepState = "done" | "active" | "failed" | "todo";
-export type Step = { label: string; detail: string; state: StepState; waiting: boolean };
-
-export function isTerminal(status: Status): boolean {
+export function isTerminal(status: Run["status"]): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
 }
 
@@ -25,78 +22,100 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
   }
 }
 
-// Steps: 0 Uploaded, 1 Preparing, 2 Writing the plan, 3 Review, 4 Rendering.
-const REVIEW = 3;
-const RENDER = 4;
+const DONE_DETAILS = [
+  "Found what you said and when you said it.",
+  "Found the parts of your screen recording.",
+  "Chose what to remove, speed up or keep.",
+  "Lined every change up on the timeline.",
+];
 
-function statusIndex(status: Status): number {
-  switch (status) {
+const LABELS = [
+  "Listening to your narration",
+  "Watching your screen",
+  "Planning the cuts",
+  "Getting it ready for you",
+];
+
+function failureStep(stage: string | null | undefined): number {
+  if (stage === "preprocess" || stage === "pre-cpu") return 1;
+  if (stage === "agent") return 3;
+  if (stage === "render" || stage === "post-io" || stage === "approved") return 4;
+  const step = Number(stage);
+  return Number.isInteger(step) && step >= 1 && step <= 4 ? step : 1;
+}
+
+function cancelledDoneCount(stage: string | null | undefined): number {
+  if (stage === "agent") return 2;
+  if (stage === "review") return 4;
+  if (stage === "approved" || stage === "render" || stage === "post-io") return 3;
+  return 0;
+}
+
+function stateFor(run: Run, index: number): Step["state"] {
+  switch (run.status) {
     case "queued":
-      return 1;
     case "preprocessing":
-      return 1;
+      return index < 2 ? "current" : "next";
     case "agent_running":
-      return 2;
+      return index < 2 ? "done" : index === 2 ? "current" : "next";
     case "awaiting_review":
-      return REVIEW;
+    case "done":
+      return "done";
     case "approved":
     case "postprocessing":
-      return RENDER;
-    case "done":
-      return 5;
-    default:
-      return -1;
+      return index < 3 ? "done" : "current";
+    case "failed": {
+      const failedAt = failureStep(run.error?.stage ?? run.stage) - 1;
+      return index < failedAt ? "done" : index === failedAt ? "failed" : "next";
+    }
+    case "cancelled":
+      return index < cancelledDoneCount(run.stage) ? "done" : "next";
   }
 }
 
-function stageIndex(stage: string | null | undefined): number {
-  if (stage === "preprocess" || stage === "pre-cpu") return 1;
-  if (stage === "agent") return 2;
-  if (stage === "review") return REVIEW;
-  return RENDER;
+function detailFor(index: number, state: Step["state"]): string {
+  if (state === "done") return DONE_DETAILS[index];
+  if (state === "failed") return "This step stopped. Nothing you did caused it.";
+  if (state === "next") return "Next";
+  if (index === 2) return "Choosing what to remove, speed up or keep.";
+  if (index === 3) return "Rendering your video.";
+  return "Working on it.";
 }
 
+/** Maps API states onto the four plain-language steps shown to the viewer. */
 export function buildSteps(run: Run): Step[] {
-  const auto = run.mode === "auto";
-  const defs: [string, string][] = [
-    ["Uploaded", "Your recording is in."],
-    ["Preparing", "Transcribing speech and finding scene changes."],
-    ["Writing the plan", "The agent writes the script and chooses what to cut."],
-    [
-      auto ? "Your review (skipped)" : "Your review",
-      auto ? "Auto mode, nothing needed a check." : "Check the script and cuts, then approve.",
-    ],
-    ["Rendering", "Cutting the video and adding the voiceover."],
-  ];
-  const failed = run.status === "failed";
-  const at = failed
-    ? stageIndex(run.error?.stage ?? run.stage)
-    : run.status === "cancelled"
-      ? -1
-      : statusIndex(run.status);
-  return defs.map(([label, detail], i) => {
-    const state: StepState =
-      failed && i === at ? "failed" : i < at ? "done" : i === at ? "active" : "todo";
-    return {
-      label,
-      detail: state === "todo" ? "" : detail,
-      state,
-      waiting: state === "active" && i === REVIEW && run.status === "awaiting_review",
-    };
+  return LABELS.map((label, index) => {
+    const state = stateFor(run, index);
+    return { label, detail: detailFor(index, state), state };
   });
 }
 
-export function logLine(event: RunEvent): string {
-  switch (event.type) {
-    case "run.status":
-      return `run.status ${event.data.status}${event.data.stage ? ` / ${event.data.stage}` : ""}`;
-    case "run.proposal_ready": {
-      const n = event.data.flags.length;
-      return `run.proposal_ready v${event.data.version}, ${n} ${n === 1 ? "flag" : "flags"}${event.data.auto_approved ? ", auto-approved" : ""}`;
-    }
-    case "run.done":
-      return "run.done";
-    case "run.failed":
-      return `run.failed ${event.data.stage}${event.data.retryable ? ", retryable" : ""}`;
+export function runHeader(run: Run): { title: string; detail: string } {
+  switch (run.status) {
+    case "queued":
+    case "preprocessing":
+      return { title: "Cleaning your video", detail: "Step 1 of 4" };
+    case "agent_running":
+      return { title: "Cleaning your video", detail: "Step 3 of 4" };
+    case "awaiting_review":
+      return { title: "Ready for you", detail: "Nothing renders until you approve." };
+    case "approved":
+    case "postprocessing":
+      return { title: "Cleaning your video", detail: "Step 4 of 4" };
+    case "done":
+      return { title: "Ready for you", detail: "Your video is ready." };
+    case "failed":
+      return {
+        title: "Cleaning stopped",
+        detail: `Step ${failureStep(run.error?.stage ?? run.stage)} of 4 didn't finish.`,
+      };
+    case "cancelled":
+      return { title: "Cleaning stopped", detail: "You stopped this run. The recording is safe." };
   }
+}
+
+export function runChoicesLabel(run: Run): string {
+  const voice = run.voice === "ai" ? "AI voice" : "My voice";
+  const mode = run.mode === "review" ? "I review first" : "Renders straight away";
+  return `${voice} · ${mode}`;
 }
