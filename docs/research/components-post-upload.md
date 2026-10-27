@@ -258,6 +258,10 @@ Principle check (design section 3.1): `review-screen.tsx` line 201 and `run-prog
 
 Unverified in this document: none of the library options were installed or rendered. Version and peer data are from the npm registry on 2026-10-20. The Radix, react-aria and wavesurfer rows are not tested under Tailwind 4 in this app.
 
+### FE-3 spike results (2026-10-27)
+
+- **S1 — Use backend peaks (BE-E E5).** On a generated 15-minute, 16 kHz mono, 16-bit PCM WAV (28,800,044 bytes), the E5 50-peaks-per-second algorithm produced 45,000 peaks in an 878,421-byte JSON file. A local Python standard-library pass took 792 ms including JSON serialization and peaked at 3.37 MB of traced Python allocations. In headless Chrome 156.0.8078.4, fetching/parsing that local JSON and painting the waveform took 9.7 ms. Browser decoding the same WAV took 725 ms; peak calculation took 47 ms; first paint took 794 ms. Chrome decoded to 48 kHz, so the `AudioBuffer` alone used 172.8 MB, in addition to the 28.8 MB WAV buffer. This is a reference measurement: BE-E E5 is not on this branch, and local `ffmpeg` and `numpy` are unavailable, so the backend result uses the same 320-sample absolute-max windows in Python rather than the production media service. The JS heap metric does not include native `AudioBuffer` storage, so decoded buffer bytes are reported directly. The local HTTP result does not include production object-storage latency. **Decision: keep backend peaks as the default.** It avoids downloading and decoding the full WAV and paints much sooner in this run. BE-E should write the generated peaks object before setting `peaks_uri`, as planned.
+
 ## 9. Accessibility checklist for every new control
 
 - Native elements first (checkbox, radio, range where possible). Custom controls only where the design needs a visual the native one cannot give (switch, segmented, timeline).
