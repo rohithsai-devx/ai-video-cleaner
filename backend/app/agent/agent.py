@@ -4,10 +4,12 @@ Invoke with the preprocess result. A redelivery invokes again with no input on t
 Durability is sync. App callers pass a MemorySaver; the Studio export leaves checkpointing to the API.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
@@ -140,14 +142,33 @@ def invoke(
     thread_id: str,
     workspace_id: str,
     interrupt_after: list[str] | None = None,
+    on_update: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    raw = graph.invoke(
-        state,
-        {"configurable": {"thread_id": thread_id}},
-        context=Ctx(bundle=bundle, workspace_id=workspace_id),
-        durability="sync",
-        interrupt_after=interrupt_after,
-    )
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    context = Ctx(bundle=bundle, workspace_id=workspace_id)
+    if on_update is None:
+        raw = graph.invoke(
+            state,
+            config,
+            context=context,
+            durability="sync",
+            interrupt_after=interrupt_after,
+        )
+    else:
+        for chunk in graph.stream(
+            state,
+            config,
+            context=context,
+            durability="sync",
+            interrupt_after=interrupt_after,
+            stream_mode="updates",
+        ):
+            if not isinstance(chunk, dict):
+                continue
+            for node, update in chunk.items():
+                if isinstance(update, dict):
+                    on_update(node, update)
+        raw = graph.get_state(config).values
     if not isinstance(raw, dict):
         raise RuntimeError("the graph did not return a state")
     return raw

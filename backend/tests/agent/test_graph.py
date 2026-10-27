@@ -20,6 +20,7 @@ from app.contracts.pipeline import (
     FixOptions,
     Keyframe,
     PreprocessResult,
+    Proposal,
     Script,
     ScriptBlock,
     SegContext,
@@ -31,8 +32,10 @@ from app.contracts.pipeline import (
 from app.pipeline import media_engines as media_engines_module
 from app.pipeline.engines import AgentOutput
 from app.pipeline.media_engines import MediaEngines
+from app.runs.changes import changes
 from app.runs.checks import edl_valid
 from app.runs.lifecycle import RunRef
+from app.shared import events as shared_events
 from app.shared.storage import GcsStorage
 
 _BACKEND = Path(__file__).resolve().parents[2]
@@ -603,6 +606,124 @@ async def test_propose_returns_a_plan_the_edit_check_accepts() -> None:
     assert edl_valid(out.edit_plan, out.seg_contexts, pre.duration).passed is True
     assert next(check for check in out.checks if check.name == "clean_only").passed is True
     assert json.loads(bundle.messages[-1][1]["content"])["allowed"]["speed"] is False
+
+
+async def test_propose_publishes_progress_totals_matching_the_proposal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pre = PreprocessResult(
+        mezz_uri="gs://b/m.mp4",
+        audio_uri="gs://b/a.wav",
+        duration=5.0,
+        fps=1.0,
+        width=8,
+        height=8,
+        words=[
+            Word(w="um", start=1.1, end=1.3),
+            Word(w="well", start=2.1, end=2.4),
+            Word(w="alpha", start=3.1, end=3.3),
+            Word(w="beta", start=4.1, end=4.3),
+            Word(w="quartz", start=4.4, end=4.7),
+        ],
+        keyframes=[Keyframe(frame_id="f1", t=3.1, uri="gs://b/f1.jpg", diff=0.42)],
+        segments=[
+            Segment(seg_id="idle", start=0.0, end=1.0, frame_ids=[], active=False),
+            Segment(seg_id="filler", start=1.0, end=2.0, frame_ids=["f1"], active=True),
+            Segment(seg_id="retake", start=2.0, end=3.0, frame_ids=["f1"], active=True),
+            Segment(seg_id="kept", start=3.0, end=4.0, frame_ids=["f1"], active=True),
+            Segment(seg_id="speed", start=4.0, end=5.0, frame_ids=["f1"], active=True),
+        ],
+    )
+    script = Script(
+        blocks=[
+            ScriptBlock(
+                block_id="b1",
+                text="alpha beta quartz",
+                seg_ids=["filler", "retake", "kept", "speed"],
+                source_span=(3.0, 5.0),
+                target_min=0.5,
+                target_max=3.0,
+                est_dur=1.5,
+            )
+        ]
+    )
+    plan = EditPlan(
+        entries=[
+            EDLEntry(
+                seg_id="idle",
+                src=(0.0, 1.0),
+                action="cut",
+                reasoning="Remove the quiet opening.",
+            ),
+            EDLEntry(
+                seg_id="filler",
+                src=(1.0, 2.0),
+                action="cut",
+                reasoning="Remove the filler word.",
+            ),
+            EDLEntry(
+                seg_id="retake",
+                src=(2.0, 3.0),
+                action="cut",
+                reasoning="Remove the restart.",
+            ),
+            EDLEntry(
+                seg_id="kept",
+                src=(3.0, 4.0),
+                action="keep",
+                reasoning="Keep the explanation.",
+            ),
+            EDLEntry(
+                seg_id="speed",
+                src=(4.0, 5.0),
+                action="speed",
+                speed=2.0,
+                reasoning="Tighten this section.",
+            ),
+        ]
+    )
+    transcript = TranscriptContext(
+        steps=[Step(step_id="step1", summary="A useful opening section", title="Opening", span=(3.0, 5.0))],
+        key_terms=[],
+        drops=[
+            Drop(span=(1.1, 1.3), kind="filler", reason="Remove the filler word."),
+            Drop(span=(2.1, 2.4), kind="retake", reason="Remove the restart."),
+        ],
+    )
+    bundle = Scripted(script=script, plan=plan, transcripts=[transcript])
+    published: list[tuple[str, Any]] = []
+
+    async def capture(_run_id: UUID, name: str, payload: Any) -> None:
+        published.append((name, payload))
+
+    monkeypatch.setattr(shared_events, "publish", capture)
+    out = await MediaEngines(GcsStorage(bucket="b", emulator_host="localhost:9"), bundle=bundle).propose(
+        REF, pre
+    )
+
+    assert out.accepted is True
+    assert [name for name, _ in published] == ["run.progress"] * 3
+    proposal = Proposal(
+        run_id=str(REF.id),
+        version=1,
+        source="agent",
+        script=out.script,
+        edit_plan=out.edit_plan,
+        seg_contexts=out.seg_contexts,
+        transcript_ctx=out.transcript_ctx,
+        checks=out.checks,
+        flags=out.flags,
+        spots=out.spots,
+    )
+    final = published[-1][1]
+    kinds = [change.kind for change in changes(proposal, proposal)]
+    assert final.pauses == kinds.count("pause") == 1
+    assert final.filler == kinds.count("filler") == 1
+    assert final.retakes == kinds.count("retake") == 1
+    assert final.slow_parts == kinds.count("speed") == 1
+    assert [chapter.model_dump(mode="python") for chapter in final.chapters] == [
+        {"title": "Opening", "start": 3.0, "end": 5.0}
+    ]
 
 
 async def test_propose_uses_fresh_checkpoint_threads_per_attempt(

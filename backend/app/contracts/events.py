@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field, RootModel
 
 from app.contracts.enums import RunStatus
+from app.contracts.pipeline import Chapter
 
 
 class RunFailedEvent(BaseModel):
@@ -30,6 +31,15 @@ class RunDoneEvent(BaseModel):
     share_slug: str | None = None
 
 
-class RunEvent(RootModel[RunStatusEvent | RunProposalReadyEvent | RunDoneEvent | RunFailedEvent]):
-    """One SSE ``data`` payload; the SSE event name (run.status, run.proposal_ready, run.done,
-    run.failed) says which. Exists so the four payloads appear in openapi.json."""
+class RunProgressEvent(BaseModel):
+    pauses: int | None = None
+    filler: int | None = None
+    retakes: int | None = None
+    slow_parts: int | None = None
+    chapters: list[Chapter] = Field(default_factory=list)
+
+
+class RunEvent(
+    RootModel[RunStatusEvent | RunProposalReadyEvent | RunDoneEvent | RunFailedEvent | RunProgressEvent]
+):
+    """One SSE payload; the event name says which progress or lifecycle shape it carries."""

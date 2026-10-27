@@ -664,10 +664,9 @@ export interface components {
         };
         /**
          * RunEvent
-         * @description One SSE ``data`` payload; the SSE event name (run.status, run.proposal_ready, run.done,
-         *     run.failed) says which. Exists so the four payloads appear in openapi.json.
+         * @description One SSE payload; the event name says which progress or lifecycle shape it carries.
          */
-        RunEvent: components["schemas"]["RunStatusEvent"] | components["schemas"]["RunProposalReadyEvent"] | components["schemas"]["RunDoneEvent"] | components["schemas"]["RunFailedEvent"];
+        RunEvent: components["schemas"]["RunStatusEvent"] | components["schemas"]["RunProposalReadyEvent"] | components["schemas"]["RunDoneEvent"] | components["schemas"]["RunFailedEvent"] | components["schemas"]["RunProgressEvent"];
         /**
          * RunFailedEvent
          * @description Payload of the run.failed event; also the shape of Run.error.
@@ -706,6 +705,19 @@ export interface components {
             voice: "original" | "ai";
             /** Voice Id */
             voice_id: string | null;
+        };
+        /** RunProgressEvent */
+        RunProgressEvent: {
+            /** Chapters */
+            chapters?: components["schemas"]["Chapter"][];
+            /** Filler */
+            filler?: number | null;
+            /** Pauses */
+            pauses?: number | null;
+            /** Retakes */
+            retakes?: number | null;
+            /** Slow Parts */
+            slow_parts?: number | null;
         };
         /** RunProposalReadyEvent */
         RunProposalReadyEvent: {

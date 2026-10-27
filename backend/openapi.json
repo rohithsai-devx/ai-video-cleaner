@@ -948,9 +948,12 @@
           },
           {
             "$ref": "#/components/schemas/RunFailedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunProgressEvent"
           }
         ],
-        "description": "One SSE ``data`` payload; the SSE event name (run.status, run.proposal_ready, run.done,\nrun.failed) says which. Exists so the four payloads appear in openapi.json.",
+        "description": "One SSE payload; the event name says which progress or lifecycle shape it carries.",
         "title": "RunEvent"
       },
       "RunFailedEvent": {
@@ -1036,6 +1039,63 @@
           "voice_id"
         ],
         "title": "RunListItem",
+        "type": "object"
+      },
+      "RunProgressEvent": {
+        "properties": {
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/Chapter"
+            },
+            "title": "Chapters",
+            "type": "array"
+          },
+          "filler": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filler"
+          },
+          "pauses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauses"
+          },
+          "retakes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retakes"
+          },
+          "slow_parts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slow Parts"
+          }
+        },
+        "title": "RunProgressEvent",
         "type": "object"
       },
       "RunProposalReadyEvent": {

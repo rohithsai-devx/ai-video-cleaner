@@ -6,19 +6,36 @@ that bundle can synthesize; otherwise it keeps the silent clip.
 """
 
 import asyncio
-from typing import Protocol, cast, runtime_checkable
+import logging
+from collections.abc import Callable
+from concurrent.futures import Future
+from typing import Any, Protocol, cast, runtime_checkable
 
 from app.agent.agent import Draft, build_graph, checkpointer, initial_state, invoke, to_output
 from app.agent.state import Bundle, make_call
 from app.contracts.enums import VoiceMode
-from app.contracts.pipeline import FixOptions, PreprocessResult, Proposal
+from app.contracts.events import RunProgressEvent
+from app.contracts.pipeline import (
+    EditPlan,
+    FixOptions,
+    PreprocessResult,
+    Proposal,
+    SegContext,
+    TranscriptContext,
+)
 from app.pipeline import media
 from app.pipeline.engines import AgentOutput
 from app.pipeline.proposal_stub import stub_proposal
 from app.providers.bundle import Call, Clip, Providers
+from app.runs.chapters import chapters_from_steps
 from app.runs.checks import fix_options_respected
 from app.runs.lifecycle import RunRef
+from app.shared import events
 from app.shared.storage import GcsStorage
+
+log = logging.getLogger(__name__)
+
+_PROGRESS_NODES = {"vlm_context", "transcript_context", "video_editor"}
 
 
 @runtime_checkable
@@ -27,7 +44,12 @@ class _CanSpeak(Protocol):
 
 
 def _propose(
-    run: RunRef, pre: PreprocessResult, bundle: Bundle, voice: VoiceMode, fix_options: FixOptions
+    run: RunRef,
+    pre: PreprocessResult,
+    bundle: Bundle,
+    voice: VoiceMode,
+    fix_options: FixOptions,
+    on_update: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> Draft:
     raw = invoke(
         build_graph(checkpointer()),
@@ -35,8 +57,55 @@ def _propose(
         bundle,
         thread_id=f"{run.id}:{run.attempt}",
         workspace_id=str(run.workspace_id),
+        on_update=on_update,
     )
     return to_output(raw)
+
+
+def _progress(state: dict[str, Any]) -> RunProgressEvent:
+    seg_contexts: list[SegContext] | None = None
+    if state.get("has_seg_contexts"):
+        seg_contexts = [
+            context if isinstance(context, SegContext) else SegContext.model_validate(context)
+            for context in state.get("seg_contexts", [])
+        ]
+
+    edit_plan: EditPlan | None = None
+    if state.get("has_edit_plan"):
+        value = state.get("edit_plan")
+        edit_plan = value if isinstance(value, EditPlan) else EditPlan.model_validate(value)
+
+    transcript: TranscriptContext | None = None
+    if state.get("has_transcript_ctx"):
+        value = state.get("transcript_ctx")
+        transcript = (
+            value if isinstance(value, TranscriptContext) else TranscriptContext.model_validate(value)
+        )
+
+    pauses = None
+    if seg_contexts is not None and edit_plan is not None:
+        contexts = {context.seg_id: context for context in seg_contexts}
+        pauses = sum(
+            entry.action == "cut"
+            and (context := contexts.get(entry.seg_id)) is not None
+            and context.by == "code"
+            for entry in edit_plan.entries
+        )
+
+    filler = None if transcript is None else sum(drop.kind == "filler" for drop in transcript.drops)
+    retakes = (
+        None
+        if transcript is None
+        else sum(drop.kind in ("false_start", "retake") for drop in transcript.drops)
+    )
+    slow_parts = None if edit_plan is None else sum(entry.action == "speed" for entry in edit_plan.entries)
+    return RunProgressEvent(
+        pauses=pauses,
+        filler=filler,
+        retakes=retakes,
+        slow_parts=slow_parts,
+        chapters=[] if transcript is None else chapters_from_steps(transcript.steps),
+    )
 
 
 class MediaEngines:
@@ -64,9 +133,43 @@ class MediaEngines:
             )
             return output.model_copy(update={"checks": [*output.checks, fix_options_respected(state)]})
         # Laya's decision and the graph's Decision are different classes; both expose p_yes.
-        draft = await asyncio.to_thread(
-            _propose, run, pre, cast(Bundle, bundle), voice, fix_options or FixOptions()
-        )
+        loop = asyncio.get_running_loop()
+        pending: list[Future[None]] = []
+        progress_state: dict[str, Any] = {}
+
+        def on_update(node: str, update: dict[str, Any]) -> None:
+            if node not in _PROGRESS_NODES:
+                return
+            try:
+                progress_state.update(update)
+                if node == "vlm_context":
+                    progress_state["has_seg_contexts"] = True
+                elif node == "transcript_context":
+                    progress_state["has_transcript_ctx"] = True
+                elif node == "video_editor":
+                    progress_state["has_edit_plan"] = True
+                event = _progress(progress_state)
+                pending.append(
+                    asyncio.run_coroutine_threadsafe(events.publish(run.id, "run.progress", event), loop)
+                )
+            except Exception:  # noqa: BLE001 - progress must not interrupt proposal generation
+                log.warning("could not schedule progress for run %s", run.id, exc_info=True)
+
+        try:
+            draft = await asyncio.to_thread(
+                _propose,
+                run,
+                pre,
+                cast(Bundle, bundle),
+                voice,
+                fix_options or FixOptions(),
+                on_update,
+            )
+        finally:
+            if pending:
+                await asyncio.gather(
+                    *(asyncio.wrap_future(future) for future in pending), return_exceptions=True
+                )
         return AgentOutput(
             script=draft.script,
             edit_plan=draft.edit_plan,

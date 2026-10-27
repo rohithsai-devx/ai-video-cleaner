@@ -1,10 +1,14 @@
 """Pure chapter projection from the transcript analyst's ordered steps."""
 
-from app.contracts.pipeline import Chapter, Proposal
+from app.contracts.pipeline import Chapter, Proposal, Step
 
 
 def chapters(proposal: Proposal) -> list[Chapter]:
-    steps = sorted(proposal.transcript_ctx.steps, key=lambda step: step.span[0])
+    return chapters_from_steps(proposal.transcript_ctx.steps)
+
+
+def chapters_from_steps(steps: list[Step]) -> list[Chapter]:
+    steps = sorted(steps, key=lambda step: step.span[0])
     return [
         Chapter(
             title=step.title or " ".join(step.summary.split()[:4]),
