@@ -11,6 +11,8 @@ export type DoneByAiPanelProps = {
   editable: boolean;
   onUndo: (change: Change) => void;
   onRedo: (change: Change) => void;
+  activeId?: string | null;
+  onSelect?: (changeId: string, start: number) => void;
 };
 
 function changeLabel(change: Change): string {
@@ -29,7 +31,15 @@ function spanLabel(span: number[]): string {
   return start === end ? from : `${from} to ${formatClock(end)}`;
 }
 
-export function DoneByAiPanel({ changes, entries, editable, onUndo, onRedo }: DoneByAiPanelProps) {
+export function DoneByAiPanel({
+  changes,
+  entries,
+  editable,
+  onUndo,
+  onRedo,
+  activeId,
+  onSelect,
+}: DoneByAiPanelProps) {
   if (changes.length === 0) {
     return <p className="m-0 text-sm text-muted">Nothing has been changed yet.</p>;
   }
@@ -39,9 +49,28 @@ export function DoneByAiPanel({ changes, entries, editable, onUndo, onRedo }: Do
       {changes.map((change) => {
         const entry = entries.find((candidate) => candidate.seg_id === change.change_id);
         const undone = entry ? entry.action === "keep" : change.undone;
+        const active = activeId === `change-${change.change_id}`;
         return (
           <li key={change.change_id}>
-            <article className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+            <article
+              aria-current={active ? "true" : undefined}
+              data-active={active || undefined}
+              data-follow-id={`change-${change.change_id}`}
+              role="group"
+              tabIndex={0}
+              onClick={(event) => {
+                if (event.target instanceof Element && event.target.closest("button")) return;
+                onSelect?.(change.change_id, change.span[0] ?? 0);
+              }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect?.(change.change_id, change.span[0] ?? 0);
+                }
+              }}
+              className={`flex flex-col gap-2 rounded-xl border border-line bg-surface p-4 focus-visible:outline-2 focus-visible:outline-ink ${active ? "outline outline-2 outline-offset-2 outline-ink" : ""}`}
+            >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <h3 className="m-0 text-sm font-medium">{changeLabel(change)}</h3>
                 <span className="font-mono text-xs tabular-nums text-muted">
@@ -51,7 +80,11 @@ export function DoneByAiPanel({ changes, entries, editable, onUndo, onRedo }: Do
                   <Button
                     variant="secondary"
                     className="ml-auto"
-                    onClick={() => (undone ? onRedo(change) : onUndo(change))}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (undone) onRedo(change);
+                      else onUndo(change);
+                    }}
                   >
                     {undone ? "Redo" : "Undo"}
                   </Button>

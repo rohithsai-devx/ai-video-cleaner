@@ -96,3 +96,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** the generated `ShareCreate` request keeps `visibility` required even though the backend defaults it.
 - **Fix:** send `visibility: "link"` and `expires_at: null` as fixed values when creating a cleaned link.
 - **Takeaway:** keep the settled visibility and expiry values explicit when removing their controls from the share UI.
+
+### Playwright e2e JSON fixtures use Node import attributes (2026-10-27)
+- **Symptom:** Playwright reports that importing a JSON fixture needs a `type: json` attribute, then discovers no tests.
+- **Root cause:** Playwright loads e2e specs through Node's ESM loader, which does not use the frontend bundler's JSON import behavior.
+- **Fix:** read the fixture with `readFileSync(new URL(..., import.meta.url), "utf8")` and parse it.
+- **Takeaway:** use Node file APIs for JSON fixture imports in e2e specs.

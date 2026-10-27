@@ -87,4 +87,24 @@ describe("DoneByAiPanel", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Redo" })).not.toBeInTheDocument();
   });
+
+  it("selects and seeks to the active change row", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <DoneByAiPanel
+        changes={changes}
+        entries={entries}
+        editable
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        activeId="change-pause-segment"
+        onSelect={onSelect}
+      />,
+    );
+    const row = container.querySelector('[data-follow-id="change-pause-segment"]');
+
+    expect(row).toHaveAttribute("aria-current", "true");
+    fireEvent.click(row!);
+    expect(onSelect).toHaveBeenCalledWith("pause-segment", 12);
+  });
 });

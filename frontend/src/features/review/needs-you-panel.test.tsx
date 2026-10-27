@@ -89,4 +89,25 @@ describe("NeedsYouPanel", () => {
     expect(screen.getByRole("button", { name: "Hold the last frame 4 s" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Slow the screen to 0.7×" })).toBeInTheDocument();
   });
+
+  it("selects and seeks to the spot when its card is clicked", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <NeedsYouPanel
+        spots={fixture.spots}
+        chapters={fixture.chapters}
+        chosenFixes={{}}
+        editable
+        playhead={0}
+        onChooseFix={vi.fn()}
+        activeId="spot-spot-narration"
+        onSelect={onSelect}
+      />,
+    );
+    const card = container.querySelector('[data-follow-id="spot-spot-narration"]');
+
+    expect(card).toHaveAttribute("aria-current", "true");
+    fireEvent.click(card!);
+    expect(onSelect).toHaveBeenCalledWith("spot-narration", 42);
+  });
 });

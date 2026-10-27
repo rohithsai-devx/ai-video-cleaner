@@ -4,7 +4,7 @@ import { CaretLeft, WarningCircle } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useReducer, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { $api, fetchClient } from "@/api/client";
 import type { components } from "@/api/generated/schema";
 import { fetchWaveformPeaks } from "@/api/waveform";
@@ -16,6 +16,7 @@ import { Skeleton } from "@/ui/skeleton";
 import { Tabs, type TabsProps } from "@/ui/tabs";
 import { MediaPlayer } from "@/ui/media-player";
 import { Timeline } from "@/ui/timeline";
+import { SegmentedControl } from "@/ui/segmented-control";
 import { DoneByAiPanel } from "./done-by-ai-panel";
 import {
   conflictCode,
@@ -36,6 +37,7 @@ import { ScriptPanel } from "./script-panel";
 import { initialUndoState, undoReducer } from "./undo-model";
 import { buildReviewTracks, playerSegmentsFromEntries } from "./review-track-model";
 import { NeedsYouPanel } from "./needs-you-panel";
+import { getPlaybackContext, usePlaybackFollow, type FollowTarget } from "./use-playback-follow";
 
 type ProposalChange = components["schemas"]["Change"];
 
@@ -70,6 +72,9 @@ export function ReviewScreen({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState("needs-you");
   const [playhead, setPlayhead] = useState(0);
   const [seekTo, setSeekTo] = useState<number>();
+  const [playerMode, setPlayerMode] = useState<"cleaned-preview" | "file">("cleaned-preview");
+  const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const proposalKey = $api.queryOptions("get", "/runs/{run_id}/proposal", params).queryKey;
   // Plain mutations so the HTTP status is visible (409 and 422 mean different things).
@@ -113,9 +118,14 @@ export function ReviewScreen({ id }: { id: string }) {
       ? `AI voice (${voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label ?? "AI voice"})`
       : "my voice";
   const chapters = (view.data?.chapters ?? []) as unknown as components["schemas"]["Chapter"][];
-  const spots = (view.data?.spots ?? []) as unknown as components["schemas"]["Spot"][];
-  const scriptLines = (view.data?.script_lines ??
-    []) as unknown as components["schemas"]["ScriptLine"][];
+  const spots = useMemo(
+    () => (view.data?.spots ?? []) as unknown as components["schemas"]["Spot"][],
+    [view.data?.spots],
+  );
+  const scriptLines = useMemo(
+    () => (view.data?.script_lines ?? []) as unknown as components["schemas"]["ScriptLine"][],
+    [view.data?.script_lines],
+  );
   const segments = playerSegmentsFromEntries(entries, changes);
   const tracks = buildReviewTracks({
     duration,
@@ -131,6 +141,71 @@ export function ReviewScreen({ id }: { id: string }) {
   const openSpotCount = spots.filter(
     (spot) => !spot.chosen_fix_id && !draft.chosenFixes?.[spot.spot_id],
   ).length;
+  const followTargets: FollowTarget[] = [
+    ...spots.map((spot) => ({
+      id: `spot-${spot.spot_id}`,
+      tab: "needs-you" as const,
+      start: spot.span[0],
+      end: spot.span[1],
+      open: !spot.chosen_fix_id && !draft.chosenFixes?.[spot.spot_id],
+    })),
+    ...changes.map((change) => ({
+      id: `change-${change.change_id}`,
+      tab: "done-by-ai" as const,
+      start: change.span[0],
+      end: change.span[1],
+    })),
+    ...scriptLines.map((line) => ({
+      id: `script-${line.block_id}`,
+      tab: "script" as const,
+      start: line.start,
+      end: line.end,
+    })),
+  ];
+  const activeFollowId = usePlaybackFollow({
+    playhead,
+    activeTab,
+    targets: followTargets,
+    panelRef,
+  });
+  const playbackContext = getPlaybackContext(playhead, chapters, followTargets, segments);
+  const scriptStartTimes = Object.fromEntries(
+    scriptLines.map((line) => [line.block_id, line.start]),
+  );
+  const selectedItem = tracks
+    .flatMap((track) => track.items)
+    .find((item) => item.id === selectedTimelineId);
+  const selectedId =
+    activeFollowId ??
+    (selectedItem && playhead >= selectedItem.start && playhead < selectedItem.end
+      ? selectedItem.id
+      : null);
+
+  const handlePlayerTime = useCallback(
+    (time: number) => {
+      setPlayhead(time);
+      const openSpot = spots.find(
+        (spot) =>
+          !spot.chosen_fix_id &&
+          !draft.chosenFixes?.[spot.spot_id] &&
+          time >= spot.span[0] &&
+          time < spot.span[1],
+      );
+      if (openSpot) setActiveTab("needs-you");
+    },
+    [draft.chosenFixes, spots],
+  );
+  const selectAndSeek = (id: string, time: number, tab?: string) => {
+    if (tab) setActiveTab(tab);
+    setSelectedTimelineId(id);
+    setPlayhead(time);
+    setSeekTo(time);
+  };
+  const selectTimelineItem = (id: string) => {
+    const target = followTargets.find((item) => item.id === id);
+    if (target) setActiveTab(target.tab);
+    setSelectedTimelineId(id);
+  };
   const chooseFix = (spot: components["schemas"]["Spot"], fix: components["schemas"]["Fix"]) => {
     if (!proposal) return;
     if (fix.patch.entry) {
@@ -169,6 +244,8 @@ export function ReviewScreen({ id }: { id: string }) {
           editable={editable}
           playhead={playhead}
           onChooseFix={chooseFix}
+          activeId={activeFollowId}
+          onSelect={(spotId, start) => selectAndSeek(`spot-${spotId}`, start, "needs-you")}
         />
       ),
       "done-by-ai": (
@@ -178,6 +255,8 @@ export function ReviewScreen({ id }: { id: string }) {
           editable={editable}
           onUndo={(change) => setChangeUndone(change, "undo")}
           onRedo={(change) => setChangeUndone(change, "redo")}
+          activeId={activeFollowId}
+          onSelect={(changeId, start) => selectAndSeek(`change-${changeId}`, start, "done-by-ai")}
         />
       ),
       script: (
@@ -186,6 +265,9 @@ export function ReviewScreen({ id }: { id: string }) {
           draftTexts={draft.texts}
           flaggedIds={flaggedIds}
           editable={editable}
+          activeId={activeFollowId}
+          startTimes={scriptStartTimes}
+          onSelect={(blockId, start) => selectAndSeek(`script-${blockId}`, start, "script")}
           onTextChange={(blockId, text) =>
             setDraft((current) => ({
               ...current,
@@ -260,6 +342,17 @@ export function ReviewScreen({ id }: { id: string }) {
         </span>
         {proposal && <span className="text-xs text-muted">Version {proposal.version}</span>}
         <span className="text-sm text-muted">Narration: {narration}</span>
+        <SegmentedControl
+          name="review-preview"
+          legend="Preview version"
+          options={[
+            { value: "cleaned-preview", label: "Cleaned" },
+            { value: "file", label: "Original" },
+          ]}
+          value={playerMode}
+          onChange={(value) => setPlayerMode(value === "file" ? "file" : "cleaned-preview")}
+          size="sm"
+        />
         {proposal && (
           <span className="font-mono text-sm tabular-nums text-ink-2">
             {formatClock(duration)} → {formatClock(outputDuration)}
@@ -359,11 +452,11 @@ export function ReviewScreen({ id }: { id: string }) {
               <MediaPlayer
                 src={playerSrc}
                 duration={duration}
-                mode="cleaned-preview"
+                mode={playerMode}
                 segments={segments}
                 chapters={chapters}
-                badge={`Cleaned · ${run.data?.voice === "ai" ? "AI voice" : "my voice"}`}
-                onTime={setPlayhead}
+                badge={`${playerMode === "file" ? "Original" : "Cleaned"} · ${run.data?.voice === "ai" ? "AI voice" : "my voice"}`}
+                onTime={handlePlayerTime}
                 seekTo={seekTo}
               />
             ) : (
@@ -373,7 +466,21 @@ export function ReviewScreen({ id }: { id: string }) {
             )}
           </section>
 
-          <section className="min-w-0 rounded-2xl border border-line bg-surface p-4 lg:col-start-1 lg:row-start-1">
+          <section
+            ref={panelRef}
+            className="min-w-0 rounded-2xl border border-line bg-surface p-4 lg:col-start-1 lg:row-start-1"
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-sunken px-3 py-2 text-sm">
+              <span className="font-medium">Now</span>
+              <span className="font-mono tabular-nums">{formatClock(playhead)}</span>
+              <span aria-hidden="true" className="text-muted">
+                ·
+              </span>
+              <span className="min-w-0 flex-1 truncate">{playbackContext.chapter}</span>
+              <Badge tone={playbackContext.state === "Needs you" ? "warning" : "neutral"}>
+                {playbackContext.state}
+              </Badge>
+            </div>
             <Tabs {...tabs} />
           </section>
 
@@ -382,8 +489,12 @@ export function ReviewScreen({ id }: { id: string }) {
               duration={duration}
               playhead={playhead}
               tracks={tracks}
-              onSeek={setSeekTo}
-              onSelect={() => undefined}
+              selectedId={selectedId}
+              onSeek={(time) => {
+                setPlayhead(time);
+                setSeekTo(time);
+              }}
+              onSelect={selectTimelineItem}
             />
             <ul className="m-0 mt-3 flex list-none flex-wrap gap-4 p-0 text-xs text-muted">
               <li className="flex items-center gap-2">
@@ -415,8 +526,10 @@ export function ReviewScreen({ id }: { id: string }) {
               </li>
             </ul>
             <p className="m-0 mt-3 text-xs text-muted">
-              Cleaned: playback jumps over removed parts. Click anything on the timeline to jump
-              there.
+              {playerMode === "file"
+                ? "Original: plays everything, removed parts are shaded."
+                : "Cleaned: playback jumps over removed parts."}{" "}
+              Click anything on the timeline to jump there.
             </p>
           </section>
         </main>

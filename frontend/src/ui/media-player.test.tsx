@@ -87,6 +87,7 @@ describe("MediaPlayer", () => {
 
     rerender(<MediaPlayer {...props} mode="file" />);
     expect(video.playbackRate).toBe(1);
+    expect(video.currentTime).toBe(40);
   });
 
   it("maps cleaned-preview seeks back to source time and seeks to chapter marks", () => {

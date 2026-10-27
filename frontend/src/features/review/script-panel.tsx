@@ -9,6 +9,9 @@ export type ScriptPanelProps = {
   flaggedIds: Set<string>;
   editable: boolean;
   onTextChange: (blockId: string, text: string) => void;
+  activeId?: string | null;
+  startTimes?: Record<string, number>;
+  onSelect?: (blockId: string, start: number) => void;
 };
 
 export function ScriptPanel({
@@ -17,6 +20,9 @@ export function ScriptPanel({
   flaggedIds,
   editable,
   onTextChange,
+  activeId,
+  startTimes = {},
+  onSelect,
 }: ScriptPanelProps) {
   return (
     <section aria-labelledby="script-panel-heading" className="flex flex-col gap-3">
@@ -27,12 +33,30 @@ export function ScriptPanel({
         {blocks.map((block, index) => {
           const text = draftTexts[block.block_id] ?? block.text;
           const flagged = flaggedIds.has(block.block_id);
+          const active = activeId === `script-${block.block_id}`;
+          const start = startTimes[block.block_id];
           return (
             <li
               key={block.block_id}
+              aria-current={active ? "true" : undefined}
+              data-active={active || undefined}
+              data-follow-id={`script-${block.block_id}`}
+              role="group"
+              tabIndex={0}
+              onClick={() => {
+                if (start !== undefined) onSelect?.(block.block_id, start);
+              }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if ((event.key === "Enter" || event.key === " ") && start !== undefined) {
+                  event.preventDefault();
+                  onSelect?.(block.block_id, start);
+                }
+              }}
               className={cx(
-                "flex flex-col gap-2 rounded-xl border bg-surface p-4",
+                "flex flex-col gap-2 rounded-xl border bg-surface p-4 focus-visible:outline-2 focus-visible:outline-ink",
                 flagged ? "border-warning/40 bg-warning-soft" : "border-line",
+                active && "outline outline-2 outline-offset-2 outline-ink",
               )}
             >
               <label

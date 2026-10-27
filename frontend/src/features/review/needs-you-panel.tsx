@@ -16,6 +16,8 @@ export type NeedsYouPanelProps = {
   editable: boolean;
   playhead: number;
   onChooseFix: (spot: Spot, fix: Fix) => void;
+  activeId?: string | null;
+  onSelect?: (spotId: string, start: number) => void;
 };
 
 function chapterAt(spot: Spot, chapters: Chapter[]): string {
@@ -36,6 +38,8 @@ export function NeedsYouPanel({
   editable,
   playhead,
   onChooseFix,
+  activeId,
+  onSelect,
 }: NeedsYouPanelProps) {
   const [reopened, setReopened] = useState<Record<string, boolean>>({});
 
@@ -48,9 +52,28 @@ export function NeedsYouPanel({
         const chosenLabel = fixLabel(spot, chosenFixId);
         const isOpen = !chosenFixId || reopened[spot.spot_id] === true;
         const isPlaying = playhead >= spot.span[0] && playhead < spot.span[1];
+        const active = activeId === `spot-${spot.spot_id}`;
         return (
           <li key={spot.spot_id}>
-            <article className="flex flex-col gap-3 rounded-xl border-2 border-flag bg-flag-soft p-4">
+            <article
+              aria-current={active ? "true" : undefined}
+              data-active={active || undefined}
+              data-follow-id={`spot-${spot.spot_id}`}
+              role="group"
+              tabIndex={0}
+              onClick={(event) => {
+                if (event.target instanceof Element && event.target.closest("button")) return;
+                onSelect?.(spot.spot_id, spot.span[0]);
+              }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect?.(spot.spot_id, spot.span[0]);
+                }
+              }}
+              className={`flex flex-col gap-3 rounded-xl border-2 border-flag bg-flag-soft p-4 focus-visible:outline-2 focus-visible:outline-ink ${active ? "outline outline-2 outline-offset-2 outline-ink" : ""}`}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="m-0 text-sm font-medium">
                   {formatClock(spot.span[0])} · {chapterAt(spot, chapters)}
@@ -74,7 +97,8 @@ export function NeedsYouPanel({
                   {editable ? (
                     <Button
                       variant="secondary"
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.stopPropagation();
                         setReopened((current) => ({ ...current, [spot.spot_id]: true }));
                       }}
                     >
@@ -88,7 +112,8 @@ export function NeedsYouPanel({
                     <Button
                       key={fix.fix_id}
                       variant={index === 0 ? "primary" : "secondary"}
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.stopPropagation();
                         setReopened((current) => ({ ...current, [spot.spot_id]: false }));
                         onChooseFix(spot, fix);
                       }}

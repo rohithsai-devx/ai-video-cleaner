@@ -49,4 +49,25 @@ describe("ScriptPanel", () => {
     expect(screen.getByRole("textbox", { name: /Script block 1/ })).toHaveValue("Saved draft.");
     expect(screen.getByRole("textbox", { name: /Script block 1/ })).toHaveAttribute("readonly");
   });
+
+  it("selects the script row and seeks to its narration start", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <ScriptPanel
+        blocks={blocks}
+        draftTexts={{}}
+        flaggedIds={new Set()}
+        editable
+        onTextChange={vi.fn()}
+        activeId="script-internal-block-id"
+        startTimes={{ "internal-block-id": 18 }}
+        onSelect={onSelect}
+      />,
+    );
+    const row = container.querySelector('[data-follow-id="script-internal-block-id"]');
+
+    expect(row).toHaveAttribute("aria-current", "true");
+    fireEvent.click(row!);
+    expect(onSelect).toHaveBeenCalledWith("internal-block-id", 18);
+  });
 });
