@@ -9,6 +9,7 @@ import contextlib
 import json
 import uuid
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from typing import Any
 from uuid import UUID
 
@@ -214,10 +215,7 @@ async def test_review_run_waits_then_approve_finishes(
 async def test_cancelled_run_is_left_alone_by_its_stage(
     api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
 ) -> None:
-    """A run cancelled before its stage runs: the stage sees a non-matching status and moves nothing.
-
-    (A cancel during a stage waits on the row lock that lifecycle.load takes, so the stage's own
-    compare-and-set cannot lose; its Lost branch is defensive.)"""
+    """A run cancelled before its stage runs: the stage sees a non-matching status and moves nothing."""
     uid = await _signup(api)
     run_id, _, ws = await _start_run(uid, "review", storage)
     async with db.tenant_tx(uid) as conn:
@@ -233,6 +231,42 @@ async def test_cancelled_run_is_left_alone_by_its_stage(
         attempt=1,
     )
     assert await stages.handle(task, FixtureEngines(storage), storage) == []
+    assert (await _status(uid, run_id))["status"] == "cancelled"
+    assert await _proposals(uid, run_id) == []
+
+
+async def test_agent_result_is_dropped_when_cancelled_during_inference(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None
+) -> None:
+    uid = await _signup(api)
+    run_id, _, workspace_id = await _start_run(uid, "review", storage)
+
+    class CancellingEngines(FixtureEngines):
+        async def propose(self, run: Any, pre: Any, **kwargs: Any) -> Any:
+            async with db.worker_tx(workspace_id) as conn:
+                current = await lifecycle.load(conn, run.id)
+                assert current is not None
+                await lifecycle.advance(conn, current, "cancelled")
+            return await super().propose(run, pre, **kwargs)
+
+    engines = CancellingEngines(storage)
+    preprocess = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=workspace_id,
+        attempt=1,
+    )
+    await stages.handle(preprocess, engines, storage)
+    agent = Task(
+        task_id=db.task_id(run_id, "agent", 1),
+        queue="agent",
+        run_id=run_id,
+        workspace_id=workspace_id,
+        attempt=1,
+    )
+
+    assert await stages.handle(agent, engines, storage) == []
     assert (await _status(uid, run_id))["status"] == "cancelled"
     assert await _proposals(uid, run_id) == []
 
@@ -330,6 +364,60 @@ async def test_duplicate_delivery_is_a_no_op(
         assert await cur.fetchone() == {"n": 1}
     finally:
         await conn.close()
+
+
+async def test_agent_engine_runs_outside_worker_transaction(
+    api: httpx.AsyncClient, storage: GcsStorage, worker_pool: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uid = await _signup(api)
+    run_id, _, workspace_id = await _start_run(uid, "review", storage)
+    engines = FixtureEngines(storage)
+    preprocess = Task(
+        task_id=db.task_id(run_id, "pre-cpu", 1),
+        queue="pre-cpu",
+        run_id=run_id,
+        workspace_id=workspace_id,
+        attempt=1,
+    )
+    await stages.handle(preprocess, engines, storage)
+
+    transaction_open = ContextVar("test_worker_transaction_open", default=False)
+    original_worker_tx = stages.worker_tx
+
+    @contextlib.asynccontextmanager
+    async def observed_worker_tx(workspace_id: UUID) -> AsyncIterator[Any]:
+        async with original_worker_tx(workspace_id) as conn:
+            token = transaction_open.set(True)
+            try:
+                yield conn
+            finally:
+                transaction_open.reset(token)
+
+    monkeypatch.setattr(stages, "worker_tx", observed_worker_tx)
+
+    class ObservingEngines(FixtureEngines):
+        def __init__(self, storage: GcsStorage) -> None:
+            super().__init__(storage)
+            self.transaction_states: list[bool] = []
+
+        async def propose(self, *args: Any, **kwargs: Any) -> Any:
+            self.transaction_states.append(transaction_open.get())
+            return await super().propose(*args, **kwargs)
+
+    observed = ObservingEngines(storage)
+    agent = Task(
+        task_id=db.task_id(run_id, "agent", 1),
+        queue="agent",
+        run_id=run_id,
+        workspace_id=workspace_id,
+        attempt=1,
+    )
+
+    events = await stages.handle(agent, observed, storage)
+
+    assert events and events[0][0] == "run.proposal_ready"
+    assert observed.transaction_states == [False]
+    assert (await _status(uid, run_id))["status"] == "awaiting_review"
 
 
 class _Broken(FixtureEngines):

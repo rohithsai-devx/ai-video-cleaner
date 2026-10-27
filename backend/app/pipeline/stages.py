@@ -3,9 +3,11 @@
 ``handle`` returns the events to publish after the last commit. A Lost compare-and-set means another
 writer moved the run first (cancel, or a duplicate delivery): the stage returns no events.
 
-The agent stage is one transaction. pre-cpu and post-io are three beats so the engine runs with no
-connection held: commit the in-progress status, run the engine, commit the result. A redelivery that
-finds the run already preprocessing or postprocessing runs the engine again and overwrites the result.
+The agent stage reads its inputs in one transaction, runs inference with no connection held, then
+saves the proposal and advances in a second transaction. pre-cpu and post-io are also three beats so
+the engine runs with no connection held: commit the in-progress status, run the engine, commit the
+result. A redelivery that finds the run already preprocessing or postprocessing runs the engine again
+and overwrites the result.
 Any other status returns no events and does not call the engine.
 
 A stage that raises is moved to ``failed`` (retryable) in a fresh transaction. ``approved`` has no
@@ -18,7 +20,6 @@ the run is auto and the proposal was accepted, otherwise awaiting_review), post-
 
 import dataclasses
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -27,7 +28,7 @@ from psycopg.types.json import Jsonb
 from app.contracts.enums import RunStatus, VoiceMode
 from app.contracts.events import RunDoneEvent, RunFailedEvent, RunProposalReadyEvent
 from app.contracts.pipeline import FixOptions, PreprocessResult, Proposal
-from app.pipeline.engines import Engines
+from app.pipeline.engines import AgentOutput, Engines
 from app.pipeline.media import RecordingTooLong
 from app.providers.errors import ProviderError
 from app.runs import lifecycle, review
@@ -50,9 +51,6 @@ class MediaStageError(Exception):
     """A media engine failed; its underlying exception stays in logs, not the API message."""
 
 
-Handler = Callable[[Conn, RunRef, Engines, GcsStorage], Awaitable[list[Event]]]
-
-
 @dataclass(frozen=True)
 class Task:
     """One delivered outbox row. Built by the in-process relay now, by the Cloud Tasks handler in phase 3."""
@@ -72,7 +70,7 @@ async def handle(task: Task, engines: Engines, storage: GcsStorage) -> list[Even
         if task.queue == "post-io":
             return await _postprocess(task, engines, storage)
         if task.queue == "agent":
-            return await _one_tx(task, "agent_running", _agent, engines, storage)
+            return await _agent(task, engines)
         log.info("no pipeline stage for queue %s (task %s)", task.queue, task.task_id)
         return []
     except Lost as e:
@@ -81,17 +79,6 @@ async def handle(task: Task, engines: Engines, storage: GcsStorage) -> list[Even
     except Exception as e:
         log.exception("stage %s failed for run %s", task.queue, task.run_id)
         return await _fail(task, e)
-
-
-async def _one_tx(
-    task: Task, expected: RunStatus, handler: Handler, engines: Engines, storage: GcsStorage
-) -> list[Event]:
-    """The agent stage: one app_worker transaction around the whole handler."""
-    async with worker_tx(task.workspace_id) as conn:
-        run = await _gate(conn, task, expected, expected)
-        if run is None:
-            return []
-        return await handler(conn, run, engines, storage)
 
 
 async def _gate(conn: Conn, task: Task, start: RunStatus, busy: RunStatus) -> RunRef | None:
@@ -234,11 +221,26 @@ async def _pre_result(conn: Conn, run_id: UUID) -> PreprocessResult:
     return PreprocessResult.model_validate(row["pre"])
 
 
-async def _agent(conn: Conn, run: RunRef, engines: Engines, storage: GcsStorage) -> list[Event]:
-    pre = await _pre_result(conn, run.id)
-    voice = await _voice(conn, run.id)
-    fix_options = await _fix_options(conn, run.id)
+async def _agent(task: Task, engines: Engines) -> list[Event]:
+    """Read inputs, run inference outside a transaction, then commit only if the task is still current."""
+    async with worker_tx(task.workspace_id) as conn:
+        run = await _gate(conn, task, "agent_running", "agent_running")
+        if run is None:
+            return []
+        pre = await _pre_result(conn, run.id)
+        voice = await _voice(conn, run.id)
+        fix_options = await _fix_options(conn, run.id)
+
     out = await engines.propose(run, pre, voice=voice, fix_options=fix_options)
+
+    async with worker_tx(task.workspace_id) as conn:
+        run = await _still(conn, task, "agent_running")
+        if run is None:
+            return []
+        return await _save_agent_output(conn, run, out)
+
+
+async def _save_agent_output(conn: Conn, run: RunRef, out: AgentOutput) -> list[Event]:
     # v1 is idempotent: a replayed agent task re-saves it as a no-op
     await conn.execute(
         "insert into proposals (workspace_id, run_id, version, source, script, edit_plan, seg_contexts,"
