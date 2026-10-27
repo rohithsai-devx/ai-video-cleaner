@@ -24,6 +24,7 @@ the timed words someone said while recording their screen.
 
 Return the steps in the order they were said, the key terms worth keeping in the final
 script, and the filler spans (ums, restarts, false starts) that a clean script should drop.
+Give each step a short chapter title of one to four plain words.
 The drops must be spans of the words you were given, not new text.
 Only propose drops of these kinds: {allowed_drop_kinds}. Follow any feedback from the last attempt."""
 

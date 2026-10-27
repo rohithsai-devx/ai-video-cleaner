@@ -19,6 +19,29 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "Chapter": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "start",
+          "end"
+        ],
+        "title": "Chapter",
+        "type": "object"
+      },
       "CheckResult": {
         "properties": {
           "message": {
@@ -447,6 +470,14 @@
       "ProposalView": {
         "description": "GET/PUT /runs/{id}/proposal: the latest proposal plus keyframe thumbnail URLs.",
         "properties": {
+          "chapters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Chapter"
+            },
+            "title": "Chapters",
+            "type": "array"
+          },
           "keyframes": {
             "default": [],
             "items": {
@@ -1244,6 +1275,11 @@
           },
           "summary": {
             "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
             "type": "string"
           }
         },

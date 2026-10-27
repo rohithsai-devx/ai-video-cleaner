@@ -14,6 +14,7 @@ from app.auth import CurrentUser
 from app.contracts.events import RunEvent, RunStatusEvent
 from app.contracts.pipeline import Proposal
 from app.runs import lifecycle, review
+from app.runs.chapters import chapters
 from app.runs.schemas import (
     ApproveRequest,
     KeyframeThumb,
@@ -82,7 +83,7 @@ async def _view(storage: GcsStorage, proposal: Proposal, frames: list[review.Key
     thumbs = [
         KeyframeThumb(frame_id=k.frame_id, t=k.t, url=u) for k, u in zip(frames, urls, strict=True) if u
     ]
-    return ProposalView(proposal=proposal, keyframes=thumbs)
+    return ProposalView(proposal=proposal, keyframes=thumbs, chapters=chapters(proposal))
 
 
 @router.get("/runs/{run_id}", tags=["runs"])

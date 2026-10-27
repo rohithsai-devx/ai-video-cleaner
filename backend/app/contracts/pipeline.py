@@ -84,6 +84,13 @@ class Step(BaseModel):
     step_id: str
     summary: str
     span: Span
+    title: str = ""
+
+
+class Chapter(BaseModel):
+    title: str
+    start: float
+    end: float
 
 
 class TranscriptContext(BaseModel):  # transcript_context
@@ -181,6 +188,7 @@ class Proposal(BaseModel):
 __all__ = [
     "Agent",
     "AgentState",
+    "Chapter",
     "CheckResult",
     "Drop",
     "EDLEntry",

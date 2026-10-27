@@ -292,6 +292,15 @@ export interface components {
              */
             base_version?: number | null;
         };
+        /** Chapter */
+        Chapter: {
+            /** End */
+            end: number;
+            /** Start */
+            start: number;
+            /** Title */
+            title: string;
+        };
         /** CheckResult */
         CheckResult: {
             /**
@@ -478,6 +487,11 @@ export interface components {
          * @description GET/PUT /runs/{id}/proposal: the latest proposal plus keyframe thumbnail URLs.
          */
         ProposalView: {
+            /**
+             * Chapters
+             * @default []
+             */
+            chapters: components["schemas"]["Chapter"][];
             /**
              * Keyframes
              * @default []
@@ -792,6 +806,11 @@ export interface components {
             step_id: string;
             /** Summary */
             summary: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
         };
         /** Token */
         Token: {
