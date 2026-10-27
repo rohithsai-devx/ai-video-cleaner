@@ -34,7 +34,7 @@ def complete(self, messages, schema) -> T: ...          # llm
 def describe(self, frames, transcript, hints) -> SegContext: ...
 def yes_no(self, question, ctx) -> Decision: ...
 def transcribe(self, audio_uri) -> list[Word]: ...
-def synthesize(self, text, voice_id, pronunciations) -> Audio: ...
+def synthesize(self, text, voice_id) -> Audio: ...
 ```
 
 Chat plugins share one HTTP implementation. The body is the only branch:
@@ -57,7 +57,7 @@ The critique prompt is built in the orchestrator from `AgentState`. The client n
 Transcribe and TTS are not chat completions. They live in the same package, with their own methods, because the bytes differ:
 
 - `transcribe(audio_uri) -> list[Word]` must return word timestamps. A server that only returns text gets an alignment step inside this method.
-- `synthesize(text, voice_id, pronunciations) -> Audio` returns a clip, its duration, and word timings.
+- `synthesize(text, voice_id) -> Audio` returns a clip, its duration, and word timings.
 
 TTS v1 calls OpenAI `audio/speech` with the key already on this machine. That clip has no word timings, so duration comes from ffprobe. When an ElevenLabs key exists, `synthesize` and `transcribe` both switch to ElevenLabs: character timings grouped into words, and real words instead of the stub. The stock voice is still an open product choice; the graph does not wait on it.
 
@@ -73,7 +73,7 @@ def build(settings) -> Providers: ...
 
 ## The graph
 
-Package `backend/app/agent/`, which `check_layout.py` already requires: `agent.py`, `state.py`, `nodes/`, `tools/`, and `backend/langgraph.json`. `AgentState` stays in `contracts/pipeline.py`. Runtime context (`Providers`, `accept_threshold`, `max_attempts`, glossary) lives in `agent/state.py` and is not checkpointed.
+Package `backend/app/agent/`, which `check_layout.py` already requires: `agent.py`, `state.py`, `nodes/`, `tools/`, and `backend/langgraph.json`. `AgentState` stays in `contracts/pipeline.py`. Runtime context (`Providers`, `accept_threshold`, `max_attempts`) lives in `agent/state.py` and is not checkpointed.
 
 `MediaEngines.propose` compiles nothing itself. It calls `agent.run(run, pre, providers)`, which invokes the graph with `thread_id = run_id` and `durability="sync"`. A redelivered task invokes with no new input so LangGraph resumes from the last checkpoint. The checkpointer is `PostgresSaver` in schema `lg`, on a pool built with `prepare_threshold=None`. After the graph ends, the worker maps the state to `AgentOutput` and the existing agent transaction saves proposal v1. The graph does not write `runs.status`.
 
@@ -109,7 +109,7 @@ The orchestrator is the only router. It returns `Command(goto=...)` and has no s
 
 `vlm_context`. Segments that are inactive get a `SegContext` written in code (`idle`, cuttable, limits taken from the segment length) and skip the model. Active segments call `describe` together, under the semaphore. The reducer `merge_by("seg_id")` replaces a segment on a redo. The node does not choose the next node.
 
-`transcript_context`. One structured call. Writes `transcript_ctx` (steps, glossary hits, drops). Does not choose the next node.
+`transcript_context`. One structured call. Writes `transcript_ctx` (steps, key terms, drops). Does not choose the next node.
 
 `script_writer`. Reads `transcript_ctx`, `seg_contexts`, and `feedback["script_writer"]`. Writes `script`. Does not choose the next node.
 
@@ -122,7 +122,7 @@ Written test-first. Each returns `CheckResult` with the target from the HLD tabl
 | Check | Fails when |
 | --- | --- |
 | Length fit | Words ÷ `voice_wps` fall outside the block's `min_dur`…`max_dur` |
-| Glossary kept | A glossary term from the source slice is missing in the block |
+| Key terms kept | A key term from the source slice is missing in the block |
 | Coverage and order | An active segment is unused, a segment is in two blocks, or blocks are out of order |
 | Nothing invented | A number, URL, or quoted UI label is in neither the transcript nor `screen_text` |
 | Clean only | Original-audio mode, and a word in the block is not in the source transcript |

@@ -66,3 +66,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** `FixtureEngines.preprocess` reported a 12-second video while its canned proposal uses the 60-second demo timeline.
 - **Fix:** keep the fixture preprocess duration at 60 seconds and align the pipeline test expectation.
 - **Takeaway:** fixture media duration must cover the proposal's source timeline.
+
+### Deleted backend packages can leave layout-breaking bytecode (2026-10-27)
+- **Symptom:** `check_layout.py` reports a removed domain as an unallowed package after its source files are deleted.
+- **Root cause:** Python leaves an `__pycache__` directory under the deleted package, and the layout check still sees the directory.
+- **Fix:** remove stale package bytecode directories when deleting the package.
+- **Takeaway:** rerun the layout check after package deletion and clean generated cache directories before diagnosing a source layout issue.

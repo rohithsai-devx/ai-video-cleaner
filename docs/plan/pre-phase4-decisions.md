@@ -10,7 +10,7 @@ A feature is part of the architecture only as a complete slice: UI, API, databas
 
 | # | Date | Item | Decision | Status |
 |---|---|---|---|---|
-| D1 | 2026-10-20 | Workspace glossary | **Remove.** No UI exists and no pipeline code reads it. Re-add later as one complete slice (settings page included) if a customer needs it. | Locked, not started |
+| D1 | 2026-10-20 | Workspace glossary | **Remove.** No UI exists and no pipeline code reads it. Re-add later as one complete slice (settings page included) if a customer needs it. | Done (commits `cb16ee8`, `651e139`, `09703a8`) |
 | D2 | 2026-10-20 | Fake Chrome share-picker on the record screen | **Remove.** The "What Chrome shows next" panel (`record-screen.tsx`, the `aside` mock) is a static drawing, not a feature. | Locked, not started |
 | D3 | 2026-10-20 | Internal names in the UI | **Rule:** the UI never shows ids or data-class names (`seg_02`, `block_01`, check names, raw check math). Every message says what, where (timestamp), why, and offers a one-click fix. | Locked |
 | D5 | 2026-10-20 | Sharing the original recording | **Add (Loom mode).** The raw recording, with the user's own voice and uncut, gets its own share link and download, available right after upload with no AI run, and next to the cleaned version on the done screen. | Locked, in prototype |
@@ -21,15 +21,6 @@ A feature is part of the architecture only as a complete slice: UI, API, databas
 | D9 | 2026-10-20 | How AI changes are presented | **Two kinds:** changes the AI applied itself (each undoable, with a one-line reason) and spots that need the user (each with fix buttons). A skipped spot uses its first fix, so rendering is never blocked. | Locked, implement later |
 | D10 | 2026-10-20 | Done screen | **One player for both versions, a "What changed" summary, and a share card per version** (own link, copy, play, download). | Locked, implement later |
 | D11 | 2026-10-20 | Past attempts | **Every run of a video is listed on the video page** with status, time, voice and a link. | Locked, implement later |
-
-### D1: remove the workspace glossary
-
-Scope when implemented:
-
-- **Remove the user-facing glossary:** `backend/app/glossary/` (router, schemas), its mount in `backend/app/main.py`, the `glossary_terms` table, its RLS policies and grants, its tests, and the `/workspaces/{id}/glossary` endpoint in `backend/openapi.json` and `frontend/src/api/generated/schema.d.ts`.
-- **Rename the agent's internal glossary** (terms extracted from the transcript by `transcript_context`) to `key_terms` so the name means one thing: `contracts/pipeline.py`, `agent/nodes/orchestrator.py`, `agent/prompts.py`, `runs/checks.py` ("glossary kept" check), the proposal fixture and stub, and their tests.
-- **Schema change goes in a new migration** (`drop table glossary_terms`), not an edit to `01_schema.sql`, because applied files are recorded in `schema_migrations`. Update the RLS guard list and `03_rls_tests.sql` to match.
-- **Docs:** drop the glossary rows from `hld-lld.md` (tables, API table, RLS table, grants, `Ctx` model, voice-stage pronunciation dictionary, `synthesize(pronunciations=...)`), and remove the glossary items from the audit (§1 R4 chips, §3 "Workspace glossary", RLS-cases note).
 
 ## Next (planning, not started)
 

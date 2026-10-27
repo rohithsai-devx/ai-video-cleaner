@@ -105,7 +105,7 @@ flowchart TB
   O["orchestrator<br/>1 · code checks (exact, free)<br/>2 · decider verdict (Jev / Laya / OpenAI)<br/>3 · LLM feedback, only on redo"]
   O -->|accept or cap| E([END])
   O <-->|goto ↓ · return ↑| V["vlm_context<br/>per active segment<br/>label · limits · keeps"]
-  O <--> T["transcript_context<br/>steps · glossary<br/>drops: filler, retakes"]
+  O <--> T["transcript_context<br/>steps · key terms<br/>drops: filler, retakes"]
   O <--> W["script_writer<br/>Clean blocks with seg_ids + targets"]
   O <--> ED["video_editor<br/>EDL + reasoning<br/>tool: compare_frames"]
 ```
@@ -119,7 +119,7 @@ The stages run in a fixed order (context, then script, then edit). The orchestra
 | --- | --- | --- | --- |
 | `orchestrator` | Code checks, then Decider, then LLM (only on redo) | Whole state | `Command(goto=…, update={feedback, attempts, stage, flags})` |
 | `vlm_context` | VLM (Gemma 4 or a hosted VLM), called for each active segment in parallel | Segments, keyframe URIs, transcript slice | `seg_contexts[]` |
-| `transcript_context` | LLM | Words with timestamps | `transcript_ctx` (steps, glossary, drops) |
+| `transcript_context` | LLM | Words with timestamps | `transcript_ctx` (steps, key terms, drops) |
 | `script_writer` | LLM | `transcript_ctx`, `seg_contexts`, feedback | `script` (blocks with `seg_ids`, target min/max) |
 | `video_editor` | LLM + `compare_frames` tool | `script`, `seg_contexts`, keyframes, feedback | `edit_plan` (EDL + reasoning per segment) |
 
@@ -161,7 +161,7 @@ def orchestrator(state: AgentState, runtime: Runtime[Ctx]) -> Command[Literal[
 | Check | On | Fails when | Feedback goes to |
 | --- | --- | --- | --- |
 | Length fit | Each script block | Words ÷ voice words-per-second falls outside the sum of `min_dur`…`max_dur` over its segments | `script_writer` |
-| Glossary kept | Each block | A glossary term spoken in the source slice is missing from the block | `script_writer` |
+| Key terms kept | Each block | A key term spoken in the source slice is missing from the block | `script_writer` |
 | Coverage and order | Script | An active segment is unused, a segment is in two blocks, or blocks are out of order | `script_writer` |
 | Nothing invented | Each block | A number, URL or quoted UI label appears in neither the transcript nor `screen_text` | `script_writer` |
 | Clean only | Each block | In original-audio mode, any word not in the source transcript | `script_writer` |
@@ -206,7 +206,7 @@ Both pipelines are plain Python workers with no agent decisions. Preprocessing t
 
 | Step | AI voice mode | Original-audio mode |
 | --- | --- | --- |
-| `voice` | TTS for each block in parallel, with the workspace pronunciation dictionary; measure real duration and keep alignment data | Cut the original WAV by the approved `drops`; no TTS |
+| `voice` | TTS for each block in parallel; measure real duration and keep alignment data | Cut the original WAV by the approved `drops`; no TTS |
 | `fit_timeline` | Solver: real audio duration vs each segment's `min_dur`/`max_dur`/`must_keep`. Order: trim cuttable frames, then speed up (≤ `max_speed`), then freeze the last frame. Narration is never sped up | Same solver; the audio is already the target length |
 | `render` | ffmpeg: trim and `setpts` per EDL entry, `tpad` for freezes, concat, mux the narration; produce the MP4 + a poster frame | Same |
 | `publish` | Write `output_uri`, mark the video `ready`, emit `run.done` | Same |
@@ -236,7 +236,6 @@ Postgres holds entities and status in plain tables, agent output in JSONB, and t
 | `proposals` | Versioned agent or user proposal (script, EDL, contexts, checks) | run |
 | `review_edits` | Each human correction (agent value to user value): future training data | proposal, user |
 | `shares` | Share links and visibility | video |
-| `glossary_terms` | Product terms and pronunciations per workspace | workspace |
 | `provider_calls` | Cost, latency and errors per provider call | run |
 | `run_transitions` | Legal status moves, enforced by a trigger | runs (trigger) |
 | `outbox` | Queue tasks committed with the state change, drained by the relay | workspace, run |
@@ -407,13 +406,6 @@ create table shares (
 );
 create index on shares (video_id);
 
-create table glossary_terms (
-  workspace_id  uuid not null references workspaces on delete cascade,
-  term          text not null check (length(term) between 1 and 200),
-  pronunciation text,
-  primary key (workspace_id, term)
-);
-
 create table provider_calls (
   id           bigint generated always as identity primary key,
   workspace_id uuid not null references workspaces on delete cascade,
@@ -502,7 +494,6 @@ Identity fails closed. Tested: once a connection has used `app.user_id`, `curren
 | `proposals` | Read; insert only `source='user'`; approve only as self | Read, insert (agent v1) | — |
 | `review_edits` | Read; insert as self; no update or delete grant | — | Append-only training data |
 | `shares` | Read and write if member | — | — |
-| `glossary_terms` | Read if member; write if owner or admin | Read | — |
 | `provider_calls` | Read if owner or admin | Read, insert | — |
 | `outbox` | Insert | Insert | Relay reads and marks sent, across workspaces |
 
@@ -575,7 +566,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['users','workspaces','workspace_members','videos','runs','run_transitions',
-                           'proposals','review_edits','shares','glossary_terms','provider_calls','outbox'] loop
+                           'proposals','review_edits','shares','provider_calls','outbox'] loop
     execute format('alter table public.%I owner to app_owner', t);
     execute format('alter table public.%I enable row level security', t);
     execute format('alter table public.%I force row level security', t);
@@ -595,10 +586,9 @@ grant select                                            on run_transitions   to 
 grant select, insert, update (approved_by, approved_at) on proposals         to app_api;
 grant select, insert                                    on review_edits      to app_api;
 grant select, insert, update (visibility, expires_at), delete on shares     to app_api;
-grant select, insert, update, delete                    on glossary_terms    to app_api;
 grant select                                            on provider_calls    to app_api;
 grant insert                                            on outbox            to app_api, app_worker;
-grant select                                            on workspaces, glossary_terms to app_worker;
+grant select                                            on workspaces        to app_worker;
 grant select, update                                    on videos, runs      to app_worker;
 grant select, insert                                    on proposals, provider_calls to app_worker;
 grant select, update (sent_at, tries)                   on outbox            to app_relay;
@@ -658,16 +648,11 @@ create policy s_upd  on shares for update to app_api
   using (workspace_id in (select app.my_workspaces())) with check (workspace_id in (select app.my_workspaces()));
 create policy s_del  on shares for delete to app_api using (workspace_id in (select app.my_workspaces()));
 
-create policy g_read  on glossary_terms for select to app_api using (workspace_id in (select app.my_workspaces()));
-create policy g_write on glossary_terms for all to app_api
-  using (app.has_role(workspace_id, '{owner,admin}')) with check (app.has_role(workspace_id, '{owner,admin}'));
-
 create policy pc_read on provider_calls for select to app_api using (app.has_role(workspace_id, '{owner,admin}'));
 create policy ob_api  on outbox for insert to app_api with check (workspace_id in (select app.my_workspaces()));
 
 -- worker context: one task = one run = one workspace
 create policy w_ws on workspaces     for select to app_worker using (id = app.wsid());
-create policy w_g  on glossary_terms for select to app_worker using (workspace_id = app.wsid());
 create policy w_v  on videos         for all to app_worker using (workspace_id = app.wsid()) with check (workspace_id = app.wsid());
 create policy w_r  on runs           for all to app_worker using (workspace_id = app.wsid()) with check (workspace_id = app.wsid());
 create policy w_p  on proposals      for all to app_worker using (workspace_id = app.wsid()) with check (workspace_id = app.wsid());
@@ -834,7 +819,7 @@ class Drop(BaseModel):
 class Step(BaseModel):
     step_id: str; summary: str; span: Span
 class TranscriptContext(BaseModel):              # transcript_context
-    steps: list[Step]; glossary: list[str]; drops: list[Drop]
+    steps: list[Step]; key_terms: list[str]; drops: list[Drop]
 
 class ScriptBlock(BaseModel):
     block_id: str
@@ -895,7 +880,6 @@ class Proposal(BaseModel):
 # ---------- runtime context (not state) ----------
 class Ctx(BaseModel):
     providers: "Providers"                       # built by the provider factory
-    glossary: dict[str, str]                     # term -> pronunciation
     accept_threshold: float = 0.7
     max_attempts: int = 3
     max_speed: float = 2.0
@@ -926,7 +910,6 @@ The FastAPI service never handles media bytes. Uploads and playback go directly 
 | `POST` | `/videos/{id}/shares` | Body `{visibility, expires_at?}`; `url` is `{FRONTEND_BASE_URL}/s/{slug}` | `{slug, url}` |
 | `GET` | `/s/{slug}` | Public share page data (signed playback URL, title, poster) | `share` |
 | `GET` | `/me` | Current user and their workspaces with role | `{user, workspaces[]}` |
-| `GET` `PUT` | `/workspaces/{id}/glossary` | Product terms and pronunciations | `terms[]` |
 
 **Approve with warnings:** `approve` is allowed while non-blocking checks fail (for example, a block that is still slightly long). It is refused with `422` only when an EDL check fails, because that would break the render.
 
@@ -947,7 +930,7 @@ Workers publish events to the Redis channel `run:{id}`, and the API relays them 
 
 ## LLD: backend modules
 
-The code follows the seams below (`backend/app/`), so phase 3 adds adapters instead of rewriting. Each domain is one package with the usual FastAPI file names: `router.py` (thin HTTP handlers), `schemas.py`, and, where needed, `dependencies.py`, `exceptions.py` and `security.py`. These are `auth/`, `videos/`, `runs/`, `shares/` and `glossary/`, with `search/` later. `scripts/check_layout.py` enforces the layout in CI:
+The code follows the seams below (`backend/app/`), so phase 3 adds adapters instead of rewriting. Each domain is one package with the usual FastAPI file names: `router.py` (thin HTTP handlers), `schemas.py`, and, where needed, `dependencies.py`, `exceptions.py` and `security.py`. These are `auth/`, `videos/`, `runs/` and `shares/`, with `search/` later. `scripts/check_layout.py` enforces the layout in CI:
 - allowed top-level packages and no vague names (`api`, `core`, `utils`, …);
 - `shared/` and `contracts/` import no domain code;
 - only `main.py` imports routers or the pipeline;
@@ -1029,7 +1012,7 @@ class Providers(Protocol):
     def describe(self, frame_uris: list[str], transcript: str, hints: dict) -> SegContext: ...
     def yes_no(self, question: str, ctx: str) -> Decision: ...
     def transcribe(self, audio_uri: str, lang: str | None = None) -> list[Word]: ...
-    def synthesize(self, text: str, voice_id: str, pronunciations: dict[str, str]) -> Audio: ...
+    def synthesize(self, text: str, voice_id: str) -> Audio: ...
 
 def build(settings) -> Providers: ...   # env: CHAT_WIRE, CHAT_BASE_URL, CHAT_*_MODEL, keys
 ```

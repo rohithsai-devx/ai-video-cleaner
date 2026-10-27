@@ -62,7 +62,7 @@ The graph holds only the agent part; pre- and postprocessing are plain code, and
 flowchart TB
   S([START]) --> O["orchestrator — the only router"]
   O -->|"stage=context: fan out"| V["vlm_context<br/>VLM per active segment<br/>label · limits · keeps"]
-  O -->|"stage=context: fan out"| T["transcript_context<br/>steps · glossary · drops"]
+  O -->|"stage=context: fan out"| T["transcript_context<br/>steps · key terms · drops"]
   V --> O
   T --> O
   O -->|"stage=script"| W["script_writer<br/>clean blocks with seg_ids + targets"]
@@ -77,7 +77,7 @@ flowchart TB
 
 ### How the orchestrator decides
 
-1. **Code checks first (exact, free):** `length_fit`, `glossary_kept`, `coverage_order`, `nothing_invented`, `clean_only` (script) and `edl_valid`, `edl_covers_script` (edit plan). A failed check routes to the responsible node with the failing messages as feedback — routed to a node that still has retry budget.
+1. **Code checks first (exact, free):** `length_fit`, `key_terms_kept`, `coverage_order`, `nothing_invented`, `clean_only` (script) and `edl_valid`, `edl_covers_script` (edit plan). A failed check routes to the responsible node with the failing messages as feedback — routed to a node that still has retry budget.
 2. **Decider verdict** (Laya on MLX, local): "is this ready for the next stage?" Only consulted when all checks pass.
 3. **LLM critique, only on rejection.**
 

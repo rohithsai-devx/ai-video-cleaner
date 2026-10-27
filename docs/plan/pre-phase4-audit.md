@@ -30,7 +30,7 @@ The theme: **the UI must never speak agent data classes.** `seg_02`, `block_01`,
 | R1 | Check messages are raw internals; "The agent flagged N things" gives no what/where/why; UI labels ("Script block 2") never match message ids (`block_01`) | Frontend map `c.name` + `ref_id` → "Script block 2 runs 11.0 s; target 10.8 s at 2 words/sec — remove about 1 word" (fix hint is mechanical: `ceil((duration − target_max) × wps)` words). Better: server-side `review` object in `ProposalView` (blocks/entries/checks with labels + fix hints; `SegContext.label` already exists and is unused) | S (FE) / M (API) |
 | R2 | Un-approvable review is a dead end: only Save/Approve/Back; cancel lives on the run screen; the API trusts `action/speed/freeze_s` edits the UI never offers | (a) "Discard this plan" action reusing `POST /runs/{id}/cancel` (legal from `awaiting_review`). (b) Expose per-entry speed (1–2×) + freeze removal | S / M |
 | R3 | Timeline is decorative: thin bar, tooltip-only, static legend not derived from entries, no click-to-seek despite a live player + keyframes on the same screen; multi-entry segments indistinguishable | Rebuild as interactive track: taller, keyboard-focusable, click-to-seek preview, hover card (label/action/reason), legend from entries present, two-way highlight with script blocks and "Cuts and why" | M |
-| R4 | Voice choice invisible pre-render (wrong-voice renders discovered minutes later); glossary terms never displayed | Render "Voice: My voice / AI voiceover" in review + run headers; glossary chips with per-block kept/missing marks | S |
+| R4 | Voice choice invisible pre-render (wrong-voice renders discovered minutes later) | Render "Voice: My voice / AI voiceover" in review + run headers | S |
 | R5 | Flags conflate failing checks vs run flags (`max_attempts`) with no explanation | Separate "N checks failing" from run flags; explanation map (`max_attempts` → "The agent tried 3 times and kept its best attempt") | S |
 | R6 | Draft edits validate only via Save; each guess burns a proposal version | Dry-run `POST /runs/{id}/proposal/validate` (same `recheck`, no insert), debounced on draft change | S-M |
 | R7 | Unsaved draft lost silently on Back | Guard navigation while `isDirty` | S |
@@ -48,12 +48,11 @@ The theme: **the UI must never speak agent data classes.** `seg_02`, `block_01`,
 
 ## 3. Backend product wiring
 
-- **Workspace glossary (M).** Correction of the UAT observation: the CRUD API *exists* (`GET/PUT /workspaces/{id}/glossary`, RLS, tests, OpenAPI). The real gap: **nothing reads it** — `glossary_kept` runs on LLM-extracted `transcript_ctx.glossary`, not the user's terms; pronunciations are accepted then discarded; `Ctx` has no glossary field. Wire: agent stage loads `glossary_terms` for the workspace (`w_g` policy already grants it), merges into the writer/editor prompts and the check input; pass pronunciations into `synthesize` when ElevenLabs lands. A UI tab without this is decorative.
 - **`provider_calls` recorder (M).** Nothing writes the table; `build()` defaults the recorder to a no-op; `CallLog` can't carry an error. Tenancy-correct shape (spec's "own autocommit" is the only option since calls happen on threads / connectionless beats): a **sync, exception-swallowing** recorder opening a short `app_worker` connection with `autocommit`, `set_config('app.workspace_id', ...)`, insert one row (`w_pc` policy and insert grant already match). Extend `CallLog` with `error`; defer `units`/`cost_usd`. Phase 4's observability has no data source until this lands.
 - **Checkpointer contradiction (M or descope).** Code ships `MemorySaver`; phase-3b's exit criterion and four doc sites promise a `PostgresSaver` in schema `lg`. Either add `AsyncPostgresSaver` + `lg.setup()` migration + kill/resume test, or rewrite the criterion and docs. Do not enter phase 4 with the contradiction.
 - **Test database separation (S-M).** Tests run against the dev `avc` DB via `.env` (phantom runs in the dev library, live worker steals test jobs, today's UAT confusion). Recommended: env-override to `avc_test` + migrate + conftest fail-fast guard (`database name must end in _test`); rollback-per-test is not viable with the multi-role transaction design.
 - **Error surfaces (S).** `stages._fail` leaks Python exception text to users and hardcodes `retryable=True`. Map to short user-safe messages per stage (detail stays in worker logs and `provider_calls.error` once wired); make `retryable` follow `ProviderError.retryable`.
-- **RLS test cases (S).** `03_rls_tests.sql` has no cases for `glossary_terms` or `provider_calls` (member-vs-stranger read, write gates, worker scope) — required by the repo's own rule once those tables become live.
+- **RLS test cases (S).** `03_rls_tests.sql` has no cases for `provider_calls` (member-vs-stranger read, write gates, worker scope) — required by the repo's own rule once those tables become live.
 - **`check_layout.py` (S).** Add the `providers/` import-direction rule promised by phase3b ("nothing under providers imports agent or pipeline").
 
 ## 4. Docs drift (one pass, S each; CLAUDE.md makes hld-lld the source of truth)
@@ -64,10 +63,10 @@ The theme: **the UI must never speak agent data classes.** `seg_02`, `block_01`,
 | hld-lld `redo_or_end`; phase3b | route to `fails[0].target` | route to a failing check whose target still has attempts |
 | hld-lld mermaid + node table; phase3b | `video_editor` uses the `compare_frames` tool | no tool offered; scores ship in the body (tool-loop client doesn't exist) |
 | hld-lld ×4; phases.md:91; phase3b | `PostgresSaver` in schema `lg` | `MemorySaver` only |
-| hld-lld post-voice row | parallel TTS with pronunciation dict, ffprobe duration | sequential, pronunciations discarded, duration from wav **payload** (placeholder-size workaround) |
+| hld-lld post-voice row | parallel TTS with ffprobe duration | sequential, duration from wav **payload** (placeholder-size workaround) |
 | hld-lld storage layout | `voice/{block_id}.mp3` | `.wav` |
 | hld-lld + phase3b checks table | length fit without tolerance | tolerates word granularity `0.5/voice_wps` |
-| hld-lld `Ctx` model | glossary/max_speed/min_dur in context | `Ctx` = bundle, workspace_id, accept_threshold, max_attempts |
+| hld-lld `Ctx` model | max_speed/min_dur in context | `Ctx` = bundle, workspace_id, accept_threshold, max_attempts |
 | hld-lld retry line | Retry button re-enqueues from stage | not implemented — land it (§2) or mark phase 4 |
 | hld-lld approve table | 422 only on EDL checks | see §0.2 — align both sides |
 | phase3a-architecture:61 | stage never passes `voice` | `_postprocess` passes `runs.voice` to render |
@@ -85,9 +84,9 @@ Library search only filters loaded pages and reports false "no videos" (S: serve
 ## Suggested slice order
 
 1. §0 gate + approve-gating fix + the four one-liners — unblocks honest CI and the worst UX moments.
-2. Review screen S-batch: R1 (frontend humanization), R2a discard, R4 voice/glossary chips, R5 flags, R7 draft guard — ~2 days, transforms the review experience.
+2. Review screen S-batch: R1 (frontend humanization), R2a discard, R4 voice label, R5 flags, R7 draft guard — ~2 days, transforms the review experience.
 3. History endpoint + video-page history section; retry endpoint + button (they share the lifecycle work).
 4. Compare/original: raw signing, download, toggle; `_RAW_PLAYBACK` already fixed in §0.
 5. `provider_calls` recorder; R1's server-side review object; R3 interactive timeline.
-6. Glossary wiring; test-DB separation; docs pass; RLS cases; error surfacing.
+6. Test-DB separation; docs pass; RLS cases; error surfacing.
 7. Commit the phase-3b tree, tick phases.md, then open phase 4.

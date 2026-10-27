@@ -205,11 +205,6 @@ async def test_share_and_public_page(api: httpx.AsyncClient, storage: FakeStorag
     assert v["playback_url"] == f"http://fake-play/{key}"
 
 
-async def test_glossary_endpoints_are_not_in_the_api_schema(api: httpx.AsyncClient) -> None:
-    paths = (await api.get("/openapi.json")).json()["paths"]
-    assert "/workspaces/{workspace_id}/glossary" not in paths
-
-
 async def test_other_tenant_gets_404(api: httpx.AsyncClient, storage: FakeStorage) -> None:
     a = await _user(api)
     video, run_id = await _run_awaiting_review(api, a, storage)
