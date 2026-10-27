@@ -11,7 +11,7 @@ A Trupeer-style product: a user records their screen in the browser, an AI agent
 
 ## Current phase
 
-Phase 3a: pre and post, code only (no model calls). Phase 3b is the providers and the agent. See `docs/plan/phases.md`. Phases 1 and 2 are done (CI green on `main`, repo `rohithsai-devx/ai-video-cleaner`). The user-facing product name is **Stepwise**; frontend layout and rules are in `.coding-powers/specs/phase2.md` and enforced by `frontend/scripts/check-layout.mjs`.
+Phase 3b (providers and the agent) is in progress. The Stepwise post-upload rework is planned in `docs/plan/post-upload/`. See `docs/plan/phases.md`. Phases 1 and 2 are done (CI green on `main`, repo `rohithsai-devx/ai-video-cleaner`). The user-facing product name is **Stepwise**; frontend layout and rules are in `.coding-powers/specs/phase2.md` and enforced by `frontend/scripts/check-layout.mjs`.
 
 **Start here:** read the handoff at `/var/folders/qp/8b0qv4892bb4plm042zcxqvc0000gn/T/ai-video-cleaner-handoff-2026-10-18-phase3.md` (it sits in the OS temp folder; if it's gone, ask the user).
 

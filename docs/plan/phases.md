@@ -1,5 +1,7 @@
 # Build plan
 
+**Current phase: 3b — providers, agent and post-upload features.**
+
 Agreed 2026-10-17. Each phase ends with a working, demoable system, and each phase builds only on the contract the one before it fixed. The design is in [../design/hld-lld.md](../design/hld-lld.md).
 
 | Phase | Goal | Real | Stubbed |
@@ -81,7 +83,7 @@ Exit criteria:
 Goal: the fixture proposal is replaced by the agent. Speech is real. The transcript stays the timed stub until an ElevenLabs key exists. The settled spec is [../.coding-powers/specs/phase3b.md](../.coding-powers/specs/phase3b.md) (GitHub issue 1).
 
 1. **Model client.** One bundle, one plugin per method. Chat is `gpt-6-luna`. Vision uses an OpenAI-compatible endpoint when `GEMMA_BASE_URL` is set, authenticated by `GEMMA_API_KEY` or a separate Modal proxy-token pair. Yes/no is Laya on MLX in the Mac agent process. Speech is `gpt-4o-mini-tts-2025-12-15` until ElevenLabs. Anthropic, Jev, and ElevenLabs are later plugins behind the same methods.
-2. **Transcribe.** Stays the timed stub. Pause cuts and the frontend voice list wait for the ElevenLabs key.
+2. **Transcribe.** Stays the timed stub. Pause cuts wait for the ElevenLabs key. The voice list uses the available OpenAI speech voices.
 3. **Agent.** LangGraph: orchestrator plus `vlm_context`, `transcript_context`, `script_writer`, `video_editor`. A failed check routes to that check's target. A capped proposal goes to review even in auto mode. `durability="sync"` and a PostgresSaver in schema `lg`. Code checks are test-first and re-run on every review edit.
 4. **Voice.** After approval, each block is synthesized, measured, fitted, and muxed. The stage passes the run's voice into render. OpenAI speech has no word timings.
 5. **Resume.** A redelivered agent task continues from its checkpoint with no new input.
