@@ -110,3 +110,4 @@ class ProposalView(BaseModel):
     spots: list[Spot] = []
     chapters: list[Chapter] = []
     script_lines: list[ScriptLine] = []
+    waveform_url: str | None = None

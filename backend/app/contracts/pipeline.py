@@ -56,6 +56,7 @@ class Segment(BaseModel):
 class PreprocessResult(BaseModel):
     mezz_uri: str
     audio_uri: str
+    peaks_uri: str | None = None
     duration: float
     fps: float
     width: int

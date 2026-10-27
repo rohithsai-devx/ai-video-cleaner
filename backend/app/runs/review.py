@@ -101,6 +101,12 @@ async def voice_mode(conn: Conn, run_id: UUID) -> VoiceMode | None:
     return None if row is None else row["voice"]
 
 
+async def peaks_uri(conn: Conn, run_id: UUID) -> str | None:
+    cur = await conn.execute("select pre from runs where id = %s", (run_id,))
+    row = await cur.fetchone()
+    return ((row or {}).get("pre") or {}).get("peaks_uri")
+
+
 async def keyframes(conn: Conn, run: RunRef) -> list[Keyframe]:
     cur = await conn.execute("select pre from runs where id = %s", (run.id,))
     row = await cur.fetchone()

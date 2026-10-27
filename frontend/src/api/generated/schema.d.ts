@@ -585,6 +585,8 @@ export interface components {
              * @default []
              */
             spots: components["schemas"]["Spot"][];
+            /** Waveform Url */
+            waveform_url?: string | null;
         };
         /** Run */
         Run: {

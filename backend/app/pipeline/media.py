@@ -4,14 +4,17 @@ No model calls. AI voice muxes clips from an injected speaker; without one it ke
 ``RecordingTooLong`` is raised from the probed duration before any transcode.
 """
 
+import array
 import asyncio
 import json
 import re
+import sys
 import tempfile
+import wave
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from app.contracts.enums import VoiceMode
@@ -71,6 +74,11 @@ class RenderPlan:
     entries: list[EDLEntry]
     narration: bool
     audio_seconds: float
+
+
+class WaveformPeaks(TypedDict):
+    rate: int
+    peaks: list[float]
 
 
 def plan_render(
@@ -134,11 +142,14 @@ async def preprocess(storage: GcsStorage, run: RunRef, raw_uri: str) -> Preproce
         mezz = work / "mezz.mp4"
         wav = work / "audio.wav"
         await transcode(raw, mezz, wav, info)
+        peaks_uri = storage.peaks_uri(run.id)
+        peaks = waveform_peaks(wav)
         samples = await sample_frames(mezz, work / "frames")
         mezz_uri = storage.mezz_uri(run.id)
         audio_uri = storage.audio_uri(run.id)
         await storage.upload_file(mezz_uri, mezz, "video/mp4")
         await storage.upload_file(audio_uri, wav, "audio/wav")
+        await storage.put(peaks_uri, json.dumps(peaks, separators=(",", ":")).encode(), "application/json")
         keyframes: list[Keyframe] = []
         for sample in samples:
             uri = storage.frame_uri(run.id, sample.frame_id)
@@ -149,6 +160,7 @@ async def preprocess(storage: GcsStorage, run: RunRef, raw_uri: str) -> Preproce
         return PreprocessResult(
             mezz_uri=mezz_uri,
             audio_uri=audio_uri,
+            peaks_uri=peaks_uri,
             duration=info.duration,
             fps=info.fps,
             width=info.width,
@@ -157,6 +169,24 @@ async def preprocess(storage: GcsStorage, run: RunRef, raw_uri: str) -> Preproce
             keyframes=keyframes,
             segments=segment(keyframes, end_s=info.duration, epsilon=_SCENE),
         )
+
+
+def waveform_peaks(path: Path, *, rate: int = 50) -> WaveformPeaks:
+    """Absolute maximum in each window, normalized to 0..1 from the preprocessed PCM WAV."""
+    if rate <= 0:
+        raise ValueError("peak rate must be positive")
+    peaks: list[float] = []
+    with wave.open(str(path), "rb") as source:
+        if source.getnchannels() != 1 or source.getsampwidth() != 2 or source.getframerate() <= 0:
+            raise ValueError("waveform peaks require a mono 16-bit PCM WAV")
+        frames_per_window = max(1, round(source.getframerate() / rate))
+        while payload := source.readframes(frames_per_window):
+            samples = array.array("h")
+            samples.frombytes(payload)
+            if sys.byteorder == "big":
+                samples.byteswap()
+            peaks.append(max(abs(value) for value in samples) / 32768.0)
+    return {"rate": rate, "peaks": peaks}
 
 
 async def render(

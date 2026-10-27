@@ -702,6 +702,17 @@
             },
             "title": "Spots",
             "type": "array"
+          },
+          "waveform_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waveform Url"
           }
         },
         "required": [

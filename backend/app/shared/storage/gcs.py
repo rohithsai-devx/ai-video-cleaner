@@ -71,6 +71,9 @@ class GcsStorage:
     def audio_uri(self, run_id: UUID | str) -> str:
         return self._uri(f"runs/{run_id}/pre/audio.wav")
 
+    def peaks_uri(self, run_id: UUID | str) -> str:
+        return self._uri(f"runs/{run_id}/pre/audio-peaks.json")
+
     def frame_uri(self, run_id: UUID | str, frame_id: str) -> str:
         return self._uri(f"runs/{run_id}/pre/frames/{frame_id}.jpg")
 

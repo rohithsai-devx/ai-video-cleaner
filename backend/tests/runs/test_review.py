@@ -60,7 +60,7 @@ async def _save(uid: UUID, run_id: UUID, body: dict[str, Any]) -> Proposal:
 
 
 async def _review_run_with_spot(
-    api: httpx.AsyncClient, storage: FakeStorage
+    api: httpx.AsyncClient, storage: FakeStorage, *, with_peaks: bool = False
 ) -> tuple[dict[str, str], UUID, UUID]:
     h = await _user(api)
     uid = _uid(h)
@@ -75,6 +75,10 @@ async def _review_run_with_spot(
         "words": _transcript(FIXTURE["script"]),
         "segments": [],
     }
+    if with_peaks:
+        peaks_uri = f"gs://test-bucket/runs/{run.id}/pre/audio-peaks.json"
+        pre["peaks_uri"] = peaks_uri
+        storage.objects.add(peaks_uri)
     block_id = FIXTURE["script"]["blocks"][0]["block_id"]
     spot = {
         "spot_id": "spot_01",
@@ -190,6 +194,7 @@ async def test_editable_fields_save_as_version_two(api: httpx.AsyncClient, stora
     assert saved.version == 2 and saved.source == "user"
     proposal_view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()
     assert proposal_view["script_lines"] == []
+    assert proposal_view["waveform_url"] is None
     view = proposal_view["proposal"]
     assert view["version"] == 2 and view["script"]["blocks"][0]["text"] == "Edited opening line."
 
@@ -323,6 +328,17 @@ async def test_approve_applies_the_default_fix_to_a_new_version(
     )
     assert view["spots"][0]["chosen_fix_id"] == "fix_01"
     assert view["spots"][0]["chosen_by"] == "default"
+
+
+async def test_proposal_view_signs_preprocess_waveform_peaks(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h, _, run_id = await _review_run_with_spot(api, storage, with_peaks=True)
+
+    response = await api.get(f"/runs/{run_id}/proposal", headers=h)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["waveform_url"] == (f"http://fake-play/runs/{run_id}/pre/audio-peaks.json")
 
 
 async def test_save_on_a_stale_base_version_is_a_version_conflict(

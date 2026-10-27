@@ -2,9 +2,11 @@
 
 import asyncio
 import io
+import json
 import math
 import re
 import shutil
+import struct
 import wave
 from os import PathLike, fspath
 from pathlib import Path
@@ -333,6 +335,11 @@ class _Disk(GcsStorage):
         del content_type
         await asyncio.to_thread(self._copy_up, uri, fspath(path))
 
+    async def put(self, uri: str, data: bytes, content_type: str) -> None:
+        del content_type
+        self.uploads.append(uri)
+        await asyncio.to_thread(self._local(uri).write_bytes, data)
+
 
 async def _bin(*args: str) -> None:
     proc = await asyncio.create_subprocess_exec(
@@ -438,10 +445,72 @@ async def test_preprocess_transcodes_frames_and_replaces_the_poster(
     assert mezz.fps == pytest.approx(pre.fps, rel=0.01)
     wav_size = await asyncio.to_thread(_size, storage._local(pre.audio_uri))
     assert 100_000 < wav_size < 200_000
+    assert pre.peaks_uri is not None
+    assert pre.peaks_uri == storage.peaks_uri(run.id)
+    peak_data = json.loads(storage._local(pre.peaks_uri).read_text())
+    assert peak_data["rate"] == 50 and len(peak_data["peaks"]) == 200
+    assert storage.uploads.index(pre.peaks_uri) > storage.uploads.index(pre.audio_uri)
     poster = storage._local(storage.poster_uri(run.video_id))
     assert await asyncio.to_thread(_magic, poster) == b"\xff\xd8"
     for frame in pre.keyframes:
         assert await asyncio.to_thread(_size, storage._local(frame.uri)) > 100
+
+
+async def test_preprocess_uploads_peaks_before_returning_the_uri(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    storage = _Disk(tmp_path / "objects")
+    raw = tmp_path / "raw.webm"
+    raw.write_bytes(b"raw")
+    storage.seed(storage.raw_uri(_RUN.video_id), raw)
+    frame_path = tmp_path / "frame.jpg"
+    frame_path.write_bytes(b"jpeg")
+
+    async def probe(_path: Path) -> Probe:
+        return Probe(duration=2, fps=30, rate="30/1", width=160, height=120, has_audio=True)
+
+    async def transcode(_src: Path, mezz: Path, wav: Path, _info: Probe) -> None:
+        await asyncio.to_thread(mezz.write_bytes, b"mp4")
+        await asyncio.to_thread(_write_sine, wav, duration_s=2)
+
+    async def sample_frames(_mezz: Path, _dest: Path) -> list[media.Sample]:
+        return [media.Sample(frame_id="f1", t=0.0, diff=0.5, path=frame_path)]
+
+    monkeypatch.setattr(media, "probe", probe)
+    monkeypatch.setattr(media, "transcode", transcode)
+    monkeypatch.setattr(media, "sample_frames", sample_frames)
+
+    pre = await media.preprocess(storage, _RUN, storage.raw_uri(_RUN.video_id))
+
+    assert pre.peaks_uri is not None
+    assert pre.peaks_uri == storage.peaks_uri(_RUN.id)
+    assert storage._local(pre.peaks_uri).exists()
+    assert storage.uploads.index(pre.peaks_uri) > storage.uploads.index(pre.audio_uri)
+
+
+def _write_sine(path: Path, *, duration_s: int) -> None:
+    sample_rate = 16_000
+    values = [
+        round(0.99 * 32767 * math.sin(2 * math.pi * 440 * index / sample_rate))
+        for index in range(sample_rate * duration_s)
+    ]
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(sample_rate)
+        output.writeframes(b"".join(struct.pack("<h", value) for value in values))
+
+
+def test_two_second_sine_produces_one_hundred_normalized_peaks(tmp_path: Path) -> None:
+    path = tmp_path / "sine.wav"
+    _write_sine(path, duration_s=2)
+
+    result = media.waveform_peaks(path)
+
+    assert result["rate"] == 50
+    peaks = result["peaks"]
+    assert len(peaks) == 100
+    assert min(peaks) == pytest.approx(0.99, abs=0.02)
 
 
 @pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg is not on PATH")

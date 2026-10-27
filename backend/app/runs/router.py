@@ -88,10 +88,14 @@ async def _view(
     agent_v1: Proposal,
     choices: dict[str, tuple[str, str]],
     voice: VoiceMode,
+    peaks_uri: str | None,
 ) -> ProposalView:
-    urls = await storage.sign(*(k.uri for k in frames))  # after commit, in a thread
+    uris = [*(keyframe.uri for keyframe in frames), *([peaks_uri] if peaks_uri is not None else [])]
+    urls = await storage.sign(*uris)  # after commit, in a thread
     thumbs = [
-        KeyframeThumb(frame_id=k.frame_id, t=k.t, url=u) for k, u in zip(frames, urls, strict=True) if u
+        KeyframeThumb(frame_id=k.frame_id, t=k.t, url=url)
+        for k, url in zip(frames, urls[: len(frames)], strict=True)
+        if url
     ]
     return ProposalView(
         proposal=proposal,
@@ -106,6 +110,7 @@ async def _view(
         ],
         chapters=chapters(proposal),
         script_lines=script_lines(proposal, voice=voice),
+        waveform_url=urls[-1] if peaks_uri is not None else None,
     )
 
 
@@ -135,6 +140,7 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
             agent_v1 = await review.first_version(conn, run_id) if found is not None else None
             choices = await review.chosen_fixes(conn, run_id) if found is not None else {}
             voice = await review.voice_mode(conn, run_id) if found is not None else None
+            peaks = await review.peaks_uri(conn, run_id) if found is not None else None
         except review.NoProposal:
             raise not_found("proposal") from None
     if found is None:
@@ -144,7 +150,7 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
     if voice is None:
         raise not_found("run")
     proposal, frames = found
-    return await _view(storage, proposal, frames, agent_v1, choices, voice)
+    return await _view(storage, proposal, frames, agent_v1, choices, voice, peaks)
 
 
 @router.put("/runs/{run_id}/proposal", tags=["runs"])
@@ -161,11 +167,12 @@ async def update_proposal(
         agent_v1 = await review.first_version(conn, run_id)
         choices = await review.chosen_fixes(conn, run_id)
         voice = await review.voice_mode(conn, run_id)
+        peaks = await review.peaks_uri(conn, run_id)
     if agent_v1 is None:
         raise not_found("proposal")
     if voice is None:
         raise not_found("run")
-    return await _view(storage, proposal, frames, agent_v1, choices, voice)
+    return await _view(storage, proposal, frames, agent_v1, choices, voice, peaks)
 
 
 @router.post("/runs/{run_id}/approve", status_code=status.HTTP_202_ACCEPTED, tags=["runs"])
