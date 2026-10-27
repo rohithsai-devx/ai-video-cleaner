@@ -76,7 +76,12 @@ function stateFor(run: Run, index: number): Step["state"] {
   }
 }
 
-function detailFor(index: number, state: Step["state"], chapters: Chapter[]): string {
+function detailFor(
+  index: number,
+  state: Step["state"],
+  chapters: Chapter[],
+  remainingTime?: string | null,
+): string {
   if (state === "done") {
     if (index === 1 && chapters.length > 0) {
       const titles = chapters.map((chapter) => chapter.title.toLowerCase()).join(", ");
@@ -86,17 +91,50 @@ function detailFor(index: number, state: Step["state"], chapters: Chapter[]): st
   }
   if (state === "failed") return "This step stopped. Nothing you did caused it.";
   if (state === "next") return "Next";
-  if (index === 2) return "Choosing what to remove, speed up or keep.";
-  if (index === 3) return "Rendering your video.";
-  return "Working on it.";
+  const currentDetail =
+    index === 2
+      ? "Choosing what to remove, speed up or keep"
+      : index === 3
+        ? "Rendering your video"
+        : "Working on it";
+  return remainingTime ? `${currentDetail}, ${remainingTime}.` : `${currentDetail}.`;
 }
 
 /** Maps API states onto the four plain-language steps shown to the viewer. */
-export function buildSteps(run: Run, chapters: Chapter[] = []): Step[] {
+export function buildSteps(
+  run: Run,
+  chapters: Chapter[] = [],
+  remainingTime?: string | null,
+): Step[] {
   return LABELS.map((label, index) => {
     const state = stateFor(run, index);
-    return { label, detail: detailFor(index, state, chapters), state };
+    return { label, detail: detailFor(index, state, chapters, remainingTime), state };
   });
+}
+
+export function remainingTimeLabel(
+  estimateSeconds: number | null | undefined,
+  startedAt: string | null | undefined,
+  nowMs: number,
+): string | null {
+  if (
+    estimateSeconds == null ||
+    !Number.isFinite(estimateSeconds) ||
+    !startedAt ||
+    !Number.isFinite(nowMs)
+  ) {
+    return null;
+  }
+
+  const startMs = Date.parse(startedAt);
+  if (!Number.isFinite(startMs)) return null;
+
+  const elapsedSeconds = Math.max(0, (nowMs - startMs) / 1000);
+  const remainingSeconds = Math.max(0, estimateSeconds - elapsedSeconds);
+  if (remainingSeconds < 30) return "almost done";
+
+  const minutes = Math.ceil(remainingSeconds / 60);
+  return `about ${minutes} ${minutes === 1 ? "minute" : "minutes"} left`;
 }
 
 export function runHeader(run: Run): { title: string; detail: string } {

@@ -1,15 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { components } from "@/api/generated/schema";
 import { RunScreen } from "./run-screen";
 
 type Run = components["schemas"]["Run"];
 type ProposalView = components["schemas"]["ProposalView"];
 
+afterEach(() => vi.useRealTimers());
+
 const mocks = vi.hoisted(() => ({
   run: undefined as Run | undefined,
   proposal: undefined as ProposalView | undefined,
   progress: null as components["schemas"]["RunProgressEvent"] | null,
+  videoEstimate: null as number | null,
   post: vi.fn(),
   invalidateQueries: vi.fn(),
   cancel: vi.fn(),
@@ -20,7 +23,7 @@ vi.mock("@/api/client", () => ({
     useQuery: (_method: string, path: string) => ({
       data:
         path === "/videos/{video_id}"
-          ? { title: "A new project" }
+          ? { title: "A new project", estimated_run_seconds: mocks.videoEstimate }
           : path === "/runs/{run_id}/proposal"
             ? mocks.proposal
             : undefined,
@@ -72,6 +75,7 @@ describe("RunScreen retry", () => {
     mocks.run = failedRun(true);
     mocks.proposal = undefined;
     mocks.progress = null;
+    mocks.videoEstimate = null;
   });
 
   it("shows Try again only when the failure is retryable", () => {
@@ -142,5 +146,32 @@ describe("RunScreen retry", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "2 changes ready. 1 are applied already. 1 need your call.",
     );
+  });
+
+  it("updates the estimate every fifteen seconds outside the live step announcement", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-18T10:00:30.000Z"));
+    mocks.run = {
+      ...failedRun(true),
+      status: "agent_running",
+      started_at: "2026-10-18T10:00:00.000Z",
+    };
+    mocks.videoEstimate = 100;
+
+    render(<RunScreen id="retry-test" />);
+
+    const liveStep = screen.getByText("Step 3 of 4");
+    expect(liveStep.getAttribute("aria-live")).toBe("polite");
+    const countdown = screen.getByText(/about 2 minutes left/, {
+      selector: '[aria-live="off"]',
+    });
+    expect(countdown.getAttribute("aria-live")).toBe("off");
+    expect(countdown.closest('[aria-live="polite"]')).toBeNull();
+    expect(
+      screen.getByText("Choosing what to remove, speed up or keep, about 2 minutes left."),
+    ).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(screen.getAllByText(/about 1 minute left/).length).toBeGreaterThan(0);
   });
 });

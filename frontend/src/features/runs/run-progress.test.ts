@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { components } from "@/api/generated/schema";
-import { applyRunEvent, buildSteps, isTerminal, runChoicesLabel, runHeader } from "./run-progress";
+import {
+  applyRunEvent,
+  buildSteps,
+  isTerminal,
+  remainingTimeLabel,
+  runChoicesLabel,
+  runHeader,
+} from "./run-progress";
 
 type Run = components["schemas"]["Run"];
 const run: Run = {
@@ -102,6 +109,14 @@ describe("buildSteps", () => {
     ).toBe("Found 2 chapters: sign in, create the project.");
   });
 
+  it("adds the estimate only to current step details", () => {
+    const steps = buildSteps({ ...run, status: "agent_running" }, [], "about 1 minute left");
+    expect(steps[2]?.detail).toBe(
+      "Choosing what to remove, speed up or keep, about 1 minute left.",
+    );
+    expect(steps[3]?.detail).toBe("Next");
+  });
+
   it("shows approved changes and render progress with the required details", () => {
     expect(buildSteps({ ...run, status: "awaiting_review" }).map((step) => step.detail)).toEqual([
       "Found what you said and when you said it.",
@@ -179,5 +194,26 @@ describe("runChoicesLabel", () => {
     expect(runChoicesLabel({ ...run, voice: "ai", mode: "auto" })).toBe(
       "AI voice · Renders straight away",
     );
+  });
+});
+
+describe("remainingTimeLabel", () => {
+  const startedAt = "2026-10-18T10:00:00.000Z";
+  const startMs = Date.parse(startedAt);
+
+  it("rounds remaining time up to minutes", () => {
+    expect(remainingTimeLabel(100, startedAt, startMs + 30_000)).toBe("about 2 minutes left");
+    expect(remainingTimeLabel(60, startedAt, startMs)).toBe("about 1 minute left");
+  });
+
+  it("says almost done below thirty seconds and clamps at zero", () => {
+    expect(remainingTimeLabel(59, startedAt, startMs + 30_000)).toBe("almost done");
+    expect(remainingTimeLabel(10, startedAt, startMs + 20_000)).toBe("almost done");
+  });
+
+  it("returns nothing without a valid estimate and start time", () => {
+    expect(remainingTimeLabel(null, startedAt, startMs)).toBeNull();
+    expect(remainingTimeLabel(60, null, startMs)).toBeNull();
+    expect(remainingTimeLabel(60, "not a date", startMs)).toBeNull();
   });
 });

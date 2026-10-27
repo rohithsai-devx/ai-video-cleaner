@@ -12,7 +12,13 @@ import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { Skeleton } from "@/ui/skeleton";
 import { Stepper } from "@/ui/stepper";
 import { FoundSoFar, readySummary } from "./found-so-far";
-import { buildSteps, isTerminal, runChoicesLabel, runHeader } from "./run-progress";
+import {
+  buildSteps,
+  isTerminal,
+  remainingTimeLabel,
+  runChoicesLabel,
+  runHeader,
+} from "./run-progress";
 import { useRunEvents } from "./use-run-events";
 
 export function RunScreen({ id }: { id: string }) {
@@ -32,9 +38,11 @@ export function RunScreen({ id }: { id: string }) {
     { params: { path: { run_id: id } } },
     { enabled: ready },
   );
+  const estimateSeconds = video.data?.estimated_run_seconds;
   const cancel = $api.useMutation("post", "/runs/{run_id}/cancel");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [retryMessage, setRetryMessage] = useState<"conflict" | "generic" | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const retry = useMutation({
     mutationFn: async () => {
       const response = await fetchClient.POST("/runs/{run_id}/retry", {
@@ -47,6 +55,25 @@ export function RunScreen({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const terminal = run ? isTerminal(run.status) : false;
   const videoId = run?.video_id;
+  const shouldTickEstimate = Boolean(
+    run &&
+    !isTerminal(run.status) &&
+    run.status !== "awaiting_review" &&
+    run.started_at &&
+    estimateSeconds != null,
+  );
+  useEffect(() => {
+    if (!shouldTickEstimate) return;
+    const syncNow = setTimeout(() => setNow(Date.now()), 0);
+    const interval = setInterval(() => setNow(Date.now()), 15_000);
+    return () => {
+      clearTimeout(syncNow);
+      clearInterval(interval);
+    };
+  }, [shouldTickEstimate]);
+
+  const timeRemaining =
+    shouldTickEstimate && run ? remainingTimeLabel(estimateSeconds, run.started_at, now) : null;
   useEffect(() => {
     if (!terminal || !videoId) return;
     void queryClient.invalidateQueries({
@@ -64,7 +91,7 @@ export function RunScreen({ id }: { id: string }) {
   const chapters = ready
     ? (proposal.data?.chapters ?? progress?.chapters ?? [])
     : (progress?.chapters ?? []);
-  const steps = run ? buildSteps(run, chapters) : [];
+  const steps = run ? buildSteps(run, chapters, timeRemaining) : [];
   const header = run ? runHeader(run) : null;
   const failed = run?.status === "failed";
   const cancelled = run?.status === "cancelled";
@@ -120,8 +147,9 @@ export function RunScreen({ id }: { id: string }) {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex flex-col gap-1.5">
                   <h1 className="m-0 text-[32px] font-semibold leading-tight">{header.title}</h1>
-                  <p aria-live="polite" className="m-0 text-[15px] text-muted">
-                    {header.detail}
+                  <p className="m-0 text-[15px] text-muted">
+                    <span aria-live="polite">{header.detail}</span>
+                    {timeRemaining ? <span aria-live="off"> · {timeRemaining}</span> : null}
                   </p>
                 </div>
                 <span className="rounded-full bg-sunken px-2.5 py-1 text-[13px] text-ink-2">
