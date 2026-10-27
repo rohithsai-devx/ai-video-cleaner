@@ -298,33 +298,6 @@ export function RecordScreen() {
               Up to {LIMIT_MINUTES} minutes. Chrome will ask which tab, window or screen to share.
             </p>
           </section>
-          <aside className="flex min-w-0 flex-[1_1_420px] flex-col gap-3" aria-hidden>
-            <div className="text-[13px] text-muted">What Chrome shows next</div>
-            <div className="flex flex-col gap-3.5 rounded-2xl border border-line-strong bg-surface p-5 shadow-[0_12px_32px_rgba(10,10,10,0.12)]">
-              <div className="text-[15px] font-semibold">Choose what to share with Stepwise</div>
-              <div className="flex gap-4 border-b border-line text-[13px]">
-                <span className="border-b-2 border-[#1A73E8] pb-2 font-medium text-[#1A73E8]">
-                  Chrome tab
-                </span>
-                <span className="pb-2 text-muted">Window</span>
-                <span className="pb-2 text-muted">Entire screen</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="flex flex-col gap-1.5 rounded-xl border-2 border-[#1A73E8] p-2">
-                  <span className="aspect-video rounded bg-[#E8EDF5]" />
-                  <span className="text-xs">Your app tab</span>
-                </div>
-                <div className="flex flex-col gap-1.5 rounded-xl border border-line p-2">
-                  <span className="aspect-video rounded bg-sunken" />
-                  <span className="text-xs text-muted">Another tab</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-[13px]">
-                <span className="size-3.5 rounded-sm bg-[#1A73E8]" />
-                Also share tab audio
-              </div>
-            </div>
-          </aside>
         </main>
       ) : null}
 
