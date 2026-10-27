@@ -28,7 +28,7 @@ const attempts = statuses.map((status, index) => ({
   created_at: "2026-10-27T10:05:00.000Z",
   voice: index % 2 === 0 ? "original" : "ai",
   voice_id: index % 2 === 0 ? null : "coral",
-  needs_you: 0,
+  needs_you: index === 0 ? 3 : 0,
 }));
 
 describe("PastAttempts", () => {
@@ -43,6 +43,7 @@ describe("PastAttempts", () => {
     expect(rows).toHaveLength(attempts.length);
     expect(within(rows[0]).getByText("Waiting for you")).toBeInTheDocument();
     expect(within(rows[0]).getByText("Waiting for you")).toHaveClass("bg-warning-soft");
+    expect(within(rows[0]).getByText("· 3 to check")).toBeInTheDocument();
     expect(within(rows[0]).getByRole("link", { name: "Open editor" })).toHaveAttribute(
       "href",
       "/runs/run-0/review",

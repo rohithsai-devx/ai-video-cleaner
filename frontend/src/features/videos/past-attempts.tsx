@@ -111,6 +111,9 @@ export function PastAttempts({
               <Badge tone={presentation.tone}>{presentation.label}</Badge>
               <p className="m-0 min-w-0 flex-1 text-sm text-muted">
                 {formatRunCreatedAt(run.created_at)} · {voice}
+                {run.status === "awaiting_review" && run.needs_you > 0 ? (
+                  <span> · {run.needs_you} to check</span>
+                ) : null}
               </p>
               {presentation.action.href ? (
                 <Link
