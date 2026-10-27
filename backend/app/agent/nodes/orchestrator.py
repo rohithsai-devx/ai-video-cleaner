@@ -131,7 +131,7 @@ def _redo(
                     update={"drops": [drop for drop in state.transcript_ctx.drops if drop.kind in allowed]}
                 )
             if state.stage == "edit":
-                return Command(goto=END, update=update)
+                return Command(goto="spot_writer", update=update)
             if state.script is not None:
                 update["stage"] = "edit"
                 return Command(goto="video_editor", update=update)
@@ -142,7 +142,7 @@ def _redo(
         if state.stage == "script":
             update["stage"] = "edit"
             return Command(goto="video_editor", update=update)
-        return Command(goto=END, update=update)
+        return Command(goto="spot_writer", update=update)
     update["stage"] = "script" if target in ("script_writer", "transcript_context") else "edit"
     return Command(goto=target, update=update)
 

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from app.contracts.pipeline import AgentState, PreprocessResult, Proposal
+from app.contracts.pipeline import AgentState, BlockPatch, Fix, FixPatch, PreprocessResult, Proposal, Spot
 from app.runs.changes import changes
 from app.runs.checks import reasons_plain
 
@@ -127,3 +127,45 @@ def test_reasons_plain_rejects_a_check_name() -> None:
     )
 
     assert reasons_plain(state).passed is False
+
+
+def test_reasons_plain_targets_spot_writer_for_internal_copy() -> None:
+    proposal = _proposal()
+    state = AgentState(
+        run_id=proposal.run_id,
+        mode="review",
+        voice="original",
+        voice_wps=2.0,
+        pre=PreprocessResult(
+            mezz_uri="m",
+            audio_uri="a",
+            duration=60,
+            fps=30,
+            width=1280,
+            height=720,
+            words=[],
+            keyframes=[],
+            segments=[],
+        ),
+        transcript_ctx=proposal.transcript_ctx,
+        edit_plan=proposal.edit_plan,
+        spots=[
+            Spot(
+                spot_id="spot-1",
+                span=(0.0, 1.0),
+                question="Should seg_02 stay?",
+                fixes=[
+                    Fix(
+                        fix_id="fix-1",
+                        label="Keep it",
+                        patch=FixPatch(block=BlockPatch(block_id="b1", text="Keep it.")),
+                    )
+                ],
+            )
+        ],
+    )
+
+    result = reasons_plain(state)
+
+    assert result.passed is False
+    assert result.target == "spot_writer"

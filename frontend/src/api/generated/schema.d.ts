@@ -292,6 +292,13 @@ export interface components {
              */
             base_version?: number | null;
         };
+        /** BlockPatch */
+        BlockPatch: {
+            /** Block Id */
+            block_id: string;
+            /** Text */
+            text: string;
+        };
         /** Change */
         Change: {
             /** Change Id */
@@ -341,7 +348,7 @@ export interface components {
              * Target
              * @enum {string}
              */
-            target: "transcript_context" | "script_writer" | "video_editor";
+            target: "transcript_context" | "script_writer" | "video_editor" | "spot_writer";
         };
         /** Drop */
         Drop: {
@@ -387,10 +394,38 @@ export interface components {
                 number
             ];
         };
+        /** EDLEntryPatch */
+        EDLEntryPatch: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "keep" | "cut" | "speed" | "freeze";
+            /**
+             * Freeze S
+             * @default 0
+             */
+            freeze_s: number;
+            /** Seg Id */
+            seg_id: string;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+        };
         /** EditPlan */
         EditPlan: {
             /** Entries */
             entries: components["schemas"]["EDLEntry"][];
+        };
+        /** Fix */
+        Fix: {
+            /** Fix Id */
+            fix_id: string;
+            /** Label */
+            label: string;
+            patch: components["schemas"]["FixPatch"];
         };
         /** FixOptions */
         FixOptions: {
@@ -414,6 +449,11 @@ export interface components {
              * @default true
              */
             slow_parts: boolean;
+        };
+        /** FixPatch */
+        FixPatch: {
+            block?: components["schemas"]["BlockPatch"] | null;
+            entry?: components["schemas"]["EDLEntryPatch"] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -489,6 +529,11 @@ export interface components {
              * @enum {string}
              */
             source: "agent" | "user";
+            /**
+             * Spots
+             * @default []
+             */
+            spots: components["schemas"]["Spot"][];
             transcript_ctx: components["schemas"]["TranscriptContext"];
             /** Version */
             version: number;
@@ -500,6 +545,10 @@ export interface components {
              * @description The version this edit was made on; 409 version_conflict if stale.
              */
             base_version: number;
+            /** Chosen Fixes */
+            chosen_fixes?: {
+                [key: string]: string;
+            };
             edit_plan: components["schemas"]["EditPlan"];
             script: components["schemas"]["Script"];
             /** Seg Contexts */
@@ -526,6 +575,11 @@ export interface components {
              */
             keyframes: components["schemas"]["KeyframeThumb"][];
             proposal: components["schemas"]["Proposal"];
+            /**
+             * Spots
+             * @default []
+             */
+            spots: components["schemas"]["Spot"][];
         };
         /** Run */
         Run: {
@@ -822,6 +876,24 @@ export interface components {
             name?: string | null;
             /** Password */
             password: string;
+        };
+        /** Spot */
+        Spot: {
+            /** Chosen By */
+            chosen_by?: ("user" | "default") | null;
+            /** Chosen Fix Id */
+            chosen_fix_id?: string | null;
+            /** Fixes */
+            fixes: components["schemas"]["Fix"][];
+            /** Question */
+            question: string;
+            /** Span */
+            span: [
+                number,
+                number
+            ];
+            /** Spot Id */
+            spot_id: string;
         };
         /** Step */
         Step: {

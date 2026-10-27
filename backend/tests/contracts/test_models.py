@@ -14,7 +14,18 @@ from pydantic import ValidationError
 
 from app.auth.schemas import SignUp
 from app.contracts import enums
-from app.contracts.pipeline import AgentState, FixOptions, Proposal, SegContext, TranscriptContext, merge_by
+from app.contracts.pipeline import (
+    AgentState,
+    BlockPatch,
+    EDLEntryPatch,
+    FixOptions,
+    FixPatch,
+    Proposal,
+    SegContext,
+    Spot,
+    TranscriptContext,
+    merge_by,
+)
 from app.runs.schemas import RunCreate
 from app.shares.schemas import ShareCreate
 from app.videos.schemas import Page, Video
@@ -79,6 +90,21 @@ def test_fixture_validates_and_round_trips() -> None:
     assert again == proposal
     assert proposal.version == 1
     assert proposal.source == "agent"
+
+
+def test_spots_default_empty_and_fix_patch_requires_one_target() -> None:
+    proposal = Proposal.model_validate_json(FIXTURE.read_text())
+    assert proposal.spots == []
+    assert AgentState.model_fields["spots"].default == []
+    assert BlockPatch(block_id="b1", text="Updated.").text == "Updated."
+    with pytest.raises(ValidationError):
+        FixPatch()
+    with pytest.raises(ValidationError):
+        FixPatch(
+            entry=EDLEntryPatch(seg_id="s1", action="cut", speed=1.0, freeze_s=0.0),
+            block=BlockPatch(block_id="b1", text="Updated."),
+        )
+    assert Spot.model_fields["chosen_fix_id"].default is None
 
 
 def test_fixture_is_internally_consistent() -> None:

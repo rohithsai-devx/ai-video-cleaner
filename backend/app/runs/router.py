@@ -84,6 +84,7 @@ async def _view(
     proposal: Proposal,
     frames: list[review.Keyframe],
     agent_v1: Proposal,
+    choices: dict[str, tuple[str, str]],
 ) -> ProposalView:
     urls = await storage.sign(*(k.uri for k in frames))  # after commit, in a thread
     thumbs = [
@@ -93,6 +94,13 @@ async def _view(
         proposal=proposal,
         keyframes=thumbs,
         changes=changes(agent_v1, proposal),
+        spots=[
+            spot.model_copy(update={"chosen_fix_id": choice[0], "chosen_by": choice[1]})
+            if (choice := choices.get(spot.spot_id)) is not None
+            and choice[0] in {fix.fix_id for fix in spot.fixes}
+            else spot
+            for spot in proposal.spots
+        ],
         chapters=chapters(proposal),
     )
 
@@ -121,6 +129,7 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
         try:
             found = await review.read(conn, run_id)
             agent_v1 = await review.first_version(conn, run_id) if found is not None else None
+            choices = await review.chosen_fixes(conn, run_id) if found is not None else {}
         except review.NoProposal:
             raise not_found("proposal") from None
     if found is None:
@@ -128,7 +137,7 @@ async def get_proposal(run_id: UUID, user_id: CurrentUser, storage: StorageDep) 
     if agent_v1 is None:
         raise not_found("proposal")
     proposal, frames = found
-    return await _view(storage, proposal, frames, agent_v1)
+    return await _view(storage, proposal, frames, agent_v1, choices)
 
 
 @router.put("/runs/{run_id}/proposal", tags=["runs"])
@@ -143,9 +152,10 @@ async def update_proposal(
             proposal = await review.save_edit(conn, run, body)
         frames = await review.keyframes(conn, run)
         agent_v1 = await review.first_version(conn, run_id)
+        choices = await review.chosen_fixes(conn, run_id)
     if agent_v1 is None:
         raise not_found("proposal")
-    return await _view(storage, proposal, frames, agent_v1)
+    return await _view(storage, proposal, frames, agent_v1, choices)
 
 
 @router.post("/runs/{run_id}/approve", status_code=status.HTTP_202_ACCEPTED, tags=["runs"])

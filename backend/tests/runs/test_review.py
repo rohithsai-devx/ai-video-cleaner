@@ -12,6 +12,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from psycopg.types.json import Jsonb
 
 from app.auth.security import decode_token
 from app.contracts.events import RunStatusEvent
@@ -23,6 +24,7 @@ from tests.factories import (
     FIXTURE,
     FakeStorage,
     _run_awaiting_review,
+    _transcript,
     _uploaded_video,
     _user,
     api,
@@ -55,6 +57,71 @@ async def _save(uid: UUID, run_id: UUID, body: dict[str, Any]) -> Proposal:
         run = await lifecycle.load(conn, run_id)
         assert run is not None
         return await review.save_edit(conn, run, ProposalUpdate.model_validate(body))
+
+
+async def _review_run_with_spot(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> tuple[dict[str, str], UUID, UUID]:
+    h = await _user(api)
+    uid = _uid(h)
+    video = await _uploaded_video(api, h, storage)
+    async with tenant_tx(uid) as conn:
+        run, _ = await lifecycle.start(
+            conn, video_id=UUID(video["id"]), mode="review", voice="original", voice_id=None
+        )
+    pre = {
+        "duration": 62.0,
+        "keyframes": [],
+        "words": _transcript(FIXTURE["script"]),
+        "segments": [],
+    }
+    block_id = FIXTURE["script"]["blocks"][0]["block_id"]
+    spot = {
+        "spot_id": "spot_01",
+        "span": [0.0, 2.0],
+        "question": "Should this line stay in the video?",
+        "fixes": [
+            {
+                "fix_id": "fix_01",
+                "label": "Use a shorter line",
+                "patch": {
+                    "block": {
+                        "block_id": block_id,
+                        "text": "Today I'll show how to export the quarterly report.",
+                    }
+                },
+            }
+        ],
+        "chosen_fix_id": None,
+        "chosen_by": None,
+    }
+    async with worker_tx(video["workspace_id"]) as conn:
+        current = await lifecycle.load(conn, run.id)
+        assert current is not None
+        await lifecycle.advance(conn, current, "preprocessing", stage="preprocess")
+        current = await lifecycle.load(conn, run.id)
+        assert current is not None
+        await lifecycle.advance(conn, current, "agent_running", stage="agent")
+        await conn.execute("update runs set pre = %s where id = %s", (Jsonb(pre), run.id))
+        await conn.execute(
+            "insert into proposals (workspace_id, run_id, version, source, script, edit_plan,"
+            " seg_contexts, transcript_ctx, checks, spots)"
+            " values (%s, %s, 1, 'agent', %s, %s, %s, %s, %s, %s)",
+            (
+                video["workspace_id"],
+                run.id,
+                Jsonb(FIXTURE["script"]),
+                Jsonb(FIXTURE["edit_plan"]),
+                Jsonb(FIXTURE["seg_contexts"]),
+                Jsonb(FIXTURE["transcript_ctx"]),
+                Jsonb(FIXTURE["checks"]),
+                Jsonb([spot]),
+            ),
+        )
+        current = await lifecycle.load(conn, run.id)
+        assert current is not None
+        await lifecycle.advance(conn, current, "awaiting_review", stage="review")
+    return h, uid, run.id
 
 
 def _block(b: dict[str, Any]) -> None:
@@ -205,6 +272,55 @@ async def test_approve_marks_video_rendering_and_emits_status(
     assert (await api.get(f"/videos/{video_id}", headers=h)).json()["status"] == "rendering"
     body = (await api.get(f"/runs/{run_id}", headers=h)).json()
     assert body["status"] == "approved" and body["stage"] == "approved"
+
+
+async def test_chosen_fix_is_saved_and_returned_in_proposal_view(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h, uid, run_id = await _review_run_with_spot(api, storage)
+    body = _body()
+    body["chosen_fixes"] = {"spot_01": "fix_01"}
+    run = (await api.get(f"/runs/{run_id}", headers=h)).json()
+    items = (await api.get(f"/videos/{run['video_id']}/runs", headers=h)).json()
+    assert items[0]["needs_you"] == 1
+
+    response = await api.put(f"/runs/{run_id}/proposal", json=body, headers=h)
+
+    assert response.status_code == 200, response.text
+    spot = response.json()["spots"][0]
+    assert spot["chosen_fix_id"] == "fix_01" and spot["chosen_by"] == "user"
+    run = (await api.get(f"/runs/{run_id}", headers=h)).json()
+    items = (await api.get(f"/videos/{run['video_id']}/runs", headers=h)).json()
+    assert items[0]["needs_you"] == 0
+    async with tenant_tx(uid) as conn:
+        cur = await conn.execute(
+            "select e.kind, e.target_id, e.user_value from review_edits e"
+            " join proposals p on p.id = e.proposal_id where p.run_id = %s and e.kind = 'fix_chosen'",
+            (run_id,),
+        )
+        saved_choice = await cur.fetchone()
+    assert saved_choice is not None
+    assert saved_choice["target_id"] == "spot_01"
+    assert saved_choice["user_value"] == {"fix_id": "fix_01", "by": "user"}
+
+
+async def test_approve_applies_the_default_fix_to_a_new_version(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h, _, run_id = await _review_run_with_spot(api, storage)
+
+    response = await api.post(f"/runs/{run_id}/approve", json={"base_version": 1}, headers=h)
+
+    assert response.status_code == 202, response.text
+    view = (await api.get(f"/runs/{run_id}/proposal", headers=h)).json()
+    assert view["proposal"]["version"] == 2
+    assert view["proposal"]["source"] == "user"
+    assert (
+        view["proposal"]["script"]["blocks"][0]["text"]
+        == "Today I'll show how to export the quarterly report."
+    )
+    assert view["spots"][0]["chosen_fix_id"] == "fix_01"
+    assert view["spots"][0]["chosen_by"] == "default"
 
 
 async def test_save_on_a_stale_base_version_is_a_version_conflict(

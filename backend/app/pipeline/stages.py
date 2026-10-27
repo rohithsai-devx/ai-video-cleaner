@@ -242,7 +242,8 @@ async def _agent(conn: Conn, run: RunRef, engines: Engines, storage: GcsStorage)
     # v1 is idempotent: a replayed agent task re-saves it as a no-op
     await conn.execute(
         "insert into proposals (workspace_id, run_id, version, source, script, edit_plan, seg_contexts,"
-        " transcript_ctx, checks) values (%s, %s, 1, 'agent', %s, %s, %s, %s, %s) on conflict do nothing",
+        " transcript_ctx, checks, spots) values (%s, %s, 1, 'agent', %s, %s, %s, %s, %s, %s)"
+        " on conflict do nothing",
         (
             run.workspace_id,
             run.id,
@@ -251,11 +252,17 @@ async def _agent(conn: Conn, run: RunRef, engines: Engines, storage: GcsStorage)
             Jsonb([s.model_dump(mode="json") for s in out.seg_contexts]),
             Jsonb(out.transcript_ctx.model_dump(mode="json")),
             Jsonb([c.model_dump(mode="json") for c in out.checks]),
+            Jsonb(
+                [
+                    spot.model_copy(update={"chosen_fix_id": None, "chosen_by": None}).model_dump(mode="json")
+                    for spot in out.spots
+                ]
+            ),
         ),
     )
     flags = list(out.flags)
     await conn.execute("update runs set flags = %s where id = %s", (Jsonb(flags), run.id))
-    approved = run.mode == "auto" and out.accepted
+    approved = run.mode == "auto" and out.accepted and not out.spots
     events: list[Event] = [
         ("run.proposal_ready", RunProposalReadyEvent(version=1, flags=flags, auto_approved=approved))
     ]

@@ -17,6 +17,7 @@ from app.contracts.pipeline import (
     Proposal,
     Script,
     SegContext,
+    Spot,
     TranscriptContext,
 )
 from app.runs.lifecycle import RunRef
@@ -30,6 +31,7 @@ class AgentOutput(BaseModel):
     checks: list[CheckResult]
     flags: list[str] = []
     accepted: bool = True  # false when the agent hit its attempt cap; fixture JSON omits it
+    spots: list[Spot] = []
 
 
 class Engines(Protocol):

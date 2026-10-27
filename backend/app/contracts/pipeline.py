@@ -8,7 +8,7 @@ from collections.abc import Callable
 from operator import add
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.contracts.enums import ProposalSource, RunMode, VoiceMode
 
@@ -137,13 +137,51 @@ class EDLEntry(BaseModel):
     reasoning: str
 
 
+class EDLEntryPatch(BaseModel):
+    seg_id: str
+    action: Literal["keep", "cut", "speed", "freeze"]
+    speed: float = 1.0
+    freeze_s: float = 0.0
+
+
+class BlockPatch(BaseModel):
+    block_id: str
+    text: str
+
+
+class FixPatch(BaseModel):
+    entry: EDLEntryPatch | None = None
+    block: BlockPatch | None = None
+
+    @model_validator(mode="after")
+    def _one_target(self) -> "FixPatch":
+        if (self.entry is None) == (self.block is None):
+            raise ValueError("a fix patch must contain exactly one target")
+        return self
+
+
+class Fix(BaseModel):
+    fix_id: str
+    label: str
+    patch: FixPatch
+
+
+class Spot(BaseModel):
+    spot_id: str
+    span: Span
+    question: str
+    fixes: list[Fix]
+    chosen_fix_id: str | None = None
+    chosen_by: Literal["user", "default"] | None = None
+
+
 class EditPlan(BaseModel):  # video_editor
     entries: list[EDLEntry]
 
 
 # ---------- orchestrator ----------
 
-Agent = Literal["transcript_context", "script_writer", "video_editor"]
+Agent = Literal["transcript_context", "script_writer", "video_editor", "spot_writer"]
 
 
 class CheckResult(BaseModel):
@@ -176,6 +214,7 @@ class AgentState(BaseModel):  # LangGraph state (thread_id = run_id)
     transcript_ctx: TranscriptContext | None = None
     script: Script | None = None
     edit_plan: EditPlan | None = None
+    spots: list[Spot] = []
     stage: Literal["context", "script", "edit", "done"] = "context"
     feedback: dict[str, list[str]] = {}
     attempts: dict[str, int] = {}
@@ -196,6 +235,7 @@ class Proposal(BaseModel):
     transcript_ctx: TranscriptContext
     checks: list[CheckResult]
     flags: list[str]
+    spots: list[Spot] = []
 
 
 __all__ = [
@@ -206,8 +246,12 @@ __all__ = [
     "Chapter",
     "CheckResult",
     "Drop",
+    "BlockPatch",
     "EDLEntry",
+    "EDLEntryPatch",
     "EditPlan",
+    "Fix",
+    "FixPatch",
     "FixOptions",
     "Keyframe",
     "PreprocessResult",
@@ -216,6 +260,7 @@ __all__ = [
     "ScriptBlock",
     "SegContext",
     "Segment",
+    "Spot",
     "Span",
     "Step",
     "TranscriptContext",

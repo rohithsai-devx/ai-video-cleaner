@@ -19,6 +19,24 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "BlockPatch": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block_id",
+          "text"
+        ],
+        "title": "BlockPatch",
+        "type": "object"
+      },
       "Change": {
         "properties": {
           "change_id": {
@@ -145,7 +163,8 @@
             "enum": [
               "transcript_context",
               "script_writer",
-              "video_editor"
+              "video_editor",
+              "spot_writer"
             ],
             "title": "Target",
             "type": "string"
@@ -262,6 +281,40 @@
         "title": "EDLEntry",
         "type": "object"
       },
+      "EDLEntryPatch": {
+        "properties": {
+          "action": {
+            "enum": [
+              "keep",
+              "cut",
+              "speed",
+              "freeze"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "freeze_s": {
+            "default": 0.0,
+            "title": "Freeze S",
+            "type": "number"
+          },
+          "seg_id": {
+            "title": "Seg Id",
+            "type": "string"
+          },
+          "speed": {
+            "default": 1.0,
+            "title": "Speed",
+            "type": "number"
+          }
+        },
+        "required": [
+          "seg_id",
+          "action"
+        ],
+        "title": "EDLEntryPatch",
+        "type": "object"
+      },
       "EditPlan": {
         "properties": {
           "entries": {
@@ -276,6 +329,28 @@
           "entries"
         ],
         "title": "EditPlan",
+        "type": "object"
+      },
+      "Fix": {
+        "properties": {
+          "fix_id": {
+            "title": "Fix Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/FixPatch"
+          }
+        },
+        "required": [
+          "fix_id",
+          "label",
+          "patch"
+        ],
+        "title": "Fix",
         "type": "object"
       },
       "FixOptions": {
@@ -302,6 +377,32 @@
           }
         },
         "title": "FixOptions",
+        "type": "object"
+      },
+      "FixPatch": {
+        "properties": {
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlockPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EDLEntryPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "FixPatch",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -489,6 +590,14 @@
             "title": "Source",
             "type": "string"
           },
+          "spots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Spot"
+            },
+            "title": "Spots",
+            "type": "array"
+          },
           "transcript_ctx": {
             "$ref": "#/components/schemas/TranscriptContext"
           },
@@ -517,6 +626,13 @@
             "description": "The version this edit was made on; 409 version_conflict if stale.",
             "title": "Base Version",
             "type": "integer"
+          },
+          "chosen_fixes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Chosen Fixes",
+            "type": "object"
           },
           "edit_plan": {
             "$ref": "#/components/schemas/EditPlan"
@@ -570,6 +686,14 @@
           },
           "proposal": {
             "$ref": "#/components/schemas/Proposal"
+          },
+          "spots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Spot"
+            },
+            "title": "Spots",
+            "type": "array"
           }
         },
         "required": [
@@ -1333,6 +1457,73 @@
           "password"
         ],
         "title": "SignUp",
+        "type": "object"
+      },
+      "Spot": {
+        "properties": {
+          "chosen_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "user",
+                  "default"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen By"
+          },
+          "chosen_fix_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen Fix Id"
+          },
+          "fixes": {
+            "items": {
+              "$ref": "#/components/schemas/Fix"
+            },
+            "title": "Fixes",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "span": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Span",
+            "type": "array"
+          },
+          "spot_id": {
+            "title": "Spot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spot_id",
+          "span",
+          "question",
+          "fixes"
+        ],
+        "title": "Spot",
         "type": "object"
       },
       "Step": {

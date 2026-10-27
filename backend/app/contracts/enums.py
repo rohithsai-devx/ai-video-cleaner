@@ -26,7 +26,7 @@ RunStatus = Literal[
 ProposalSource = Literal["agent", "user"]
 ShareVisibility = Literal["private", "workspace", "link"]
 ShareKind = Literal["cleaned", "raw"]
-EditKind = Literal["block_text", "cut_toggle", "speed", "must_keep"]
+EditKind = Literal["block_text", "cut_toggle", "speed", "must_keep", "fix_chosen"]
 
 __all__ = [
     "EditKind",

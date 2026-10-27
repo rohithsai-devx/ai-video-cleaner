@@ -67,7 +67,23 @@ async def test_capped_auto_run_stops_for_review(client: httpx.AsyncClient, worke
             (Jsonb(pre.model_dump(mode="json")), run.id),
         )
 
-    bundle = Scripted(script=good_script(pre, text="alpha 99"), plan=good_plan(pre), p_yes=0.99)
+    bundle = Scripted(
+        script=good_script(pre, text="alpha 99"),
+        plan=good_plan(pre),
+        p_yes=0.99,
+        spot_ideas=[
+            {
+                "span": [0.0, 4.0],
+                "question": "Should this phrase stay in the video?",
+                "fixes": [
+                    {
+                        "label": "Use a clearer line",
+                        "patch": {"block": {"block_id": "b1", "text": "Alpha and beta."}},
+                    }
+                ],
+            }
+        ],
+    )
     storage = GcsStorage(bucket="b", emulator_host="localhost:9")
     events = await handle(
         Task(task_id="agent-1", queue="agent", run_id=run.id, workspace_id=workspace_id, attempt=1),
@@ -97,9 +113,10 @@ async def test_capped_auto_run_stops_for_review(client: httpx.AsyncClient, worke
         assert saved["video_status"] == "awaiting_review"
         assert saved["flags"] == ["max_attempts"]
         cur = await conn.execute(
-            "select version, source, edit_plan from proposals where run_id = %s", (run.id,)
+            "select version, source, edit_plan, spots from proposals where run_id = %s", (run.id,)
         )
         proposals = await cur.fetchall()
     assert [(row["version"], row["source"]) for row in proposals] == [(1, "agent")]
     # A capped script still ships a complete cut list, or approval is a dead end in the UI.
     assert len(proposals[0]["edit_plan"]["entries"]) > 0
+    assert proposals[0]["spots"][0]["question"] == "Should this phrase stay in the video?"

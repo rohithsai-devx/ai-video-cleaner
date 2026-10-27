@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.contracts.enums import RunMode, RunStatus, VoiceMode
 from app.contracts.events import RunFailedEvent
-from app.contracts.pipeline import Change, Chapter, EditPlan, FixOptions, Proposal, Script, SegContext
+from app.contracts.pipeline import Change, Chapter, EditPlan, FixOptions, Proposal, Script, SegContext, Spot
 
 
 class RunSummary(BaseModel):
@@ -76,6 +76,7 @@ class ProposalUpdate(BaseModel):
     script: Script
     edit_plan: EditPlan
     seg_contexts: list[SegContext]
+    chosen_fixes: dict[str, str] = Field(default_factory=dict)
 
 
 class ApproveRequest(BaseModel):
@@ -96,4 +97,5 @@ class ProposalView(BaseModel):
     proposal: Proposal
     keyframes: list[KeyframeThumb] = []
     changes: list[Change] = []
+    spots: list[Spot] = []
     chapters: list[Chapter] = []

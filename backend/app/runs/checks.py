@@ -17,6 +17,7 @@ from app.contracts.pipeline import (
     ScriptBlock,
     SegContext,
     Segment,
+    Spot,
     TranscriptContext,
     Word,
 )
@@ -171,10 +172,12 @@ def fix_options_respected(state: AgentState, source: ProposalSource = "agent") -
 
 
 def reasons_plain(state: AgentState) -> CheckResult:
-    return _plain_reasons(state.transcript_ctx, state.edit_plan)
+    return _plain_reasons(state.transcript_ctx, state.edit_plan, state.spots)
 
 
-def _plain_reasons(transcript: TranscriptContext | None, plan: EditPlan | None) -> CheckResult:
+def _plain_reasons(
+    transcript: TranscriptContext | None, plan: EditPlan | None, spots: list[Spot] | None = None
+) -> CheckResult:
     problem: str | None = None
     target: Agent = "transcript_context"
     if transcript is not None:
@@ -194,6 +197,19 @@ def _plain_reasons(transcript: TranscriptContext | None, plan: EditPlan | None) 
         target = "video_editor"
         problem = next(
             (entry.reasoning for entry in plan.entries if _contains_internal_copy(entry.reasoning)), None
+        )
+    if problem is None and spots:
+        target = "spot_writer"
+        problem = next(
+            (
+                text
+                for text in [
+                    *(spot.question for spot in spots),
+                    *(fix.label for spot in spots for fix in spot.fixes),
+                ]
+                if _contains_internal_copy(text)
+            ),
+            None,
         )
     return CheckResult(
         name="reasons_plain",

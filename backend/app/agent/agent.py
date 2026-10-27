@@ -10,12 +10,13 @@ from uuid import UUID
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from langgraph.graph import START, StateGraph
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import RetryPolicy
 
 from app.agent.nodes.orchestrator import orchestrator
 from app.agent.nodes.script_writer import script_writer
+from app.agent.nodes.spot_writer import spot_writer
 from app.agent.nodes.transcript_context import transcript_context
 from app.agent.nodes.video_editor import video_editor
 from app.agent.nodes.vlm_context import vlm_context
@@ -23,17 +24,22 @@ from app.agent.state import Bundle, Ctx
 from app.contracts.enums import RunMode, VoiceMode
 from app.contracts.pipeline import (
     AgentState,
+    BlockPatch,
     CheckResult,
     Drop,
     EditPlan,
     EDLEntry,
+    EDLEntryPatch,
+    Fix,
     FixOptions,
+    FixPatch,
     Keyframe,
     PreprocessResult,
     Script,
     ScriptBlock,
     SegContext,
     Segment,
+    Spot,
     Step,
     TranscriptContext,
     Word,
@@ -51,6 +57,11 @@ _CHECKPOINT_TYPES = (
     TranscriptContext,
     Step,
     Drop,
+    BlockPatch,
+    EDLEntryPatch,
+    Fix,
+    FixPatch,
+    Spot,
     Script,
     ScriptBlock,
     EditPlan,
@@ -86,9 +97,11 @@ def build_graph(saver: MemorySaver | None = None) -> CompiledStateGraph[Any, Any
     builder.add_node("transcript_context", transcript_context, retry_policy=_RETRY)
     builder.add_node("script_writer", script_writer, retry_policy=_RETRY)
     builder.add_node("video_editor", video_editor, retry_policy=_RETRY)
+    builder.add_node("spot_writer", spot_writer, retry_policy=_RETRY)
     builder.add_edge(START, "orchestrator")
     for name in ("vlm_context", "transcript_context", "script_writer", "video_editor"):
         builder.add_edge(name, "orchestrator")
+    builder.add_edge("spot_writer", END)
     if saver is None:
         return builder.compile()
     return builder.compile(checkpointer=saver)
@@ -151,6 +164,7 @@ class Draft:
     checks: list[CheckResult]
     flags: list[str]
     accepted: bool
+    spots: list[Spot]
 
 
 def to_output(raw: dict[str, Any]) -> Draft:
@@ -167,6 +181,7 @@ def to_output(raw: dict[str, Any]) -> Draft:
         checks=list(state.checks),
         flags=list(state.flags),
         accepted=state.stage == "done",
+        spots=list(state.spots),
     )
 
 

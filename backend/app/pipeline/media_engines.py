@@ -75,6 +75,7 @@ class MediaEngines:
             checks=draft.checks,
             flags=draft.flags,
             accepted=draft.accepted,
+            spots=draft.spots,
         )
 
     async def render(

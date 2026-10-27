@@ -43,3 +43,10 @@ Write the edit plan the renderer will cut with:
 - Together the kept spans must cover every script block's segments, or the render cannot be built.
 - Reasoning is shown to the viewer as one short plain sentence, without ids or check names.
 - Feedback lists what a check rejected on the last attempt. Fix exactly that, keep the rest."""
+
+SPOT_WRITER = """Turn the failed checks into cards the viewer can settle before rendering.
+For each card, write one short question in plain language and two or three concrete fixes in best-first order.
+Each fix must change one existing edit-list entry or replace the text of one existing script block.
+Use only the supplied segment and block ids inside patches. Never put ids or check names in questions
+or labels.
+Keep questions and labels short and understandable to someone who did not build the video."""

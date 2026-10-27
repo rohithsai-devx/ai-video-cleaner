@@ -152,12 +152,14 @@ class Scripted:
         p_yes: float | dict[str, float] = 0.7,
         seg: SegContext | None = None,
         transcripts: list[TranscriptContext] | None = None,
+        spot_ideas: list[dict[str, Any]] | None = None,
     ) -> None:
         self.script = script
         self.plan = plan
         self.p_yes = p_yes
         self.seg = seg or fresh_segment()
         self.transcripts = list(transcripts or [TranscriptContext(steps=[], key_terms=[], drops=[])])
+        self.spot_ideas = list(spot_ideas or [])
         self.log: list[str] = []
         self.messages: list[Any] = []
         self.tools: list[Any] = []
@@ -182,6 +184,8 @@ class Scripted:
             return self.script
         if schema.__name__ == "EditPlan":
             return self.plan
+        if schema.__name__ == "SpotIdeas":
+            return schema(spots=self.spot_ideas)
         if schema.__name__ == "Critique":
             return schema(text="shorten the opening")
         raise AssertionError(schema.__name__)
@@ -221,6 +225,7 @@ def test_orchestrator_is_the_only_router() -> None:
         ("transcript_context", "orchestrator"),
         ("script_writer", "orchestrator"),
         ("video_editor", "orchestrator"),
+        ("spot_writer", "__end__"),
     }
 
 
@@ -249,6 +254,7 @@ def test_accepts_at_the_default_threshold() -> None:
     assert bundle.log.count("Script") == 1
     assert bundle.log.count("EditPlan") == 1
     assert bundle.log.count("Critique") == 0
+    assert bundle.log.count("SpotIdeas") == 0
     assert out.accepted is True
     assert raw["stage"] == "done"
     assert any("quartz" in json.dumps(message) for message in bundle.messages)
@@ -313,6 +319,105 @@ def test_non_plain_chapter_title_routes_back_to_transcript_context() -> None:
     assert bundle.log.count("TranscriptContext") == 2
     assert raw["transcript_ctx"].steps[0].title == "Open Reports"
     assert to_output(raw).accepted is True
+
+
+def test_capped_checks_write_one_needs_you_spot_with_generated_ids() -> None:
+    pre = clip()
+    bundle = Scripted(
+        script=good_script(pre, text="alpha 99"),
+        plan=good_plan(pre),
+        p_yes=0.99,
+        spot_ideas=[
+            {
+                "span": [0.0, 4.0],
+                "question": "Should this phrase stay in the video?",
+                "fixes": [
+                    {
+                        "label": "Keep the opening line",
+                        "patch": {"block": {"block_id": "b1", "text": "Alpha and beta."}},
+                    }
+                ],
+            }
+        ],
+    )
+
+    _compiled, raw = _run(bundle, initial_state(REF, pre))
+    out = to_output(raw)
+
+    assert bundle.log.count("SpotIdeas") == 1
+    assert len(out.spots) == 1
+    assert out.spots[0].question == "Should this phrase stay in the video?"
+    assert out.spots[0].spot_id and out.spots[0].fixes[0].fix_id
+    assert out.spots[0].chosen_fix_id is None and out.spots[0].chosen_by is None
+    assert out.accepted is False
+
+
+def test_spot_writer_drops_invalid_fixes_and_spots_without_fixes() -> None:
+    pre = clip()
+    bundle = Scripted(
+        script=good_script(pre, text="alpha 99"),
+        plan=good_plan(pre),
+        p_yes=0.99,
+        spot_ideas=[
+            {
+                "span": [0.0, 4.0],
+                "question": "Can this ending be clearer?",
+                "fixes": [
+                    {
+                        "label": "Use an unknown section",
+                        "patch": {
+                            "entry": {
+                                "seg_id": "unknown",
+                                "action": "speed",
+                                "speed": 1.2,
+                                "freeze_s": 0.0,
+                            }
+                        },
+                    },
+                    {
+                        "label": "Speed this up",
+                        "patch": {
+                            "entry": {
+                                "seg_id": "s1",
+                                "action": "speed",
+                                "speed": 2.5,
+                                "freeze_s": 0.0,
+                            }
+                        },
+                    },
+                    {
+                        "label": "Keep the current line",
+                        "patch": {"block": {"block_id": "b1", "text": "Alpha and beta."}},
+                    },
+                ],
+            },
+            {
+                "span": [0.0, 4.0],
+                "question": "Can this line stay?",
+                "fixes": [
+                    {
+                        "label": "Use an unknown section",
+                        "patch": {
+                            "entry": {
+                                "seg_id": "unknown",
+                                "action": "cut",
+                                "speed": 1.0,
+                                "freeze_s": 0.0,
+                            }
+                        },
+                    }
+                ],
+            },
+        ],
+    )
+
+    _compiled, raw = _run(bundle, initial_state(REF, pre))
+    out = to_output(raw)
+
+    assert len(out.spots) == 1
+    assert out.spots[0].question == "Can this ending be clearer?"
+    assert len(out.spots[0].fixes) == 1
+    assert out.spots[0].fixes[0].patch.block is not None
 
 
 def test_rejection_below_the_threshold_returns_to_the_writer() -> None:

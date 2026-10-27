@@ -130,8 +130,15 @@ async def list_for_video(conn: Conn, video_id: UUID) -> list[RunListItem]:
     """Return a video's latest 20 attempts; visibility of the video is checked by the caller."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select id, status, created_at, voice, voice_id from runs"
-            " where video_id = %s order by created_at desc limit 20",
+            "select r.id, r.status, r.created_at, r.voice, r.voice_id,"
+            " coalesce((select count(*)::int from jsonb_array_elements(coalesce(p.spots, '[]'::jsonb))"
+            " as spot(value) where not exists (select 1 from review_edits e"
+            " join proposals chosen on chosen.id = e.proposal_id"
+            " where chosen.run_id = r.id and e.kind = 'fix_chosen'"
+            " and e.target_id = spot.value->>'spot_id')), 0) as needs_you"
+            " from runs r left join lateral (select spots from proposals"
+            " where run_id = r.id order by version desc limit 1) p on true"
+            " where r.video_id = %s order by r.created_at desc limit 20",
             (video_id,),
         )
         rows = await cur.fetchall()
@@ -142,6 +149,7 @@ async def list_for_video(conn: Conn, video_id: UUID) -> list[RunListItem]:
             created_at=row["created_at"],
             voice=row["voice"],
             voice_id=row["voice_id"],
+            needs_you=row["needs_you"],
         )
         for row in rows
     ]
