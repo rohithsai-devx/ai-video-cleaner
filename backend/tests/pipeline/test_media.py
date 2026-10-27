@@ -553,7 +553,7 @@ def _blocks(
         seg_contexts=contexts,
         transcript_ctx=TranscriptContext(
             steps=[],
-            glossary=[],
+            key_terms=[],
             drops=[Drop(span=span, kind="filler", reason="um") for span in drops or []],
         ),
         checks=[],

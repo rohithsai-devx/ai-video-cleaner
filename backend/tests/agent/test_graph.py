@@ -170,7 +170,7 @@ class Scripted:
         self.messages.append(messages)
         self.tools.append(tools)
         if schema.__name__ == "TranscriptContext":
-            return TranscriptContext(steps=[], glossary=[], drops=[])
+            return TranscriptContext(steps=[], key_terms=[], drops=[])
         if schema.__name__ == "Script":
             return self.script
         if schema.__name__ == "EditPlan":
@@ -307,7 +307,7 @@ def test_output_without_an_edit_plan_raises_instead_of_saving_an_empty_one() -> 
         update={
             "stage": "script",
             "script": good_script(pre),
-            "transcript_ctx": TranscriptContext(steps=[], glossary=[], drops=[]),
+            "transcript_ctx": TranscriptContext(steps=[], key_terms=[], drops=[]),
         }
     )
     with pytest.raises(RuntimeError, match="without a renderable edit plan"):
@@ -324,7 +324,7 @@ def test_editor_gets_its_retries_when_the_writer_is_already_capped() -> None:
             "stage": "edit",
             "attempts": {"script_writer": 3},
             "seg_contexts": [fresh_segment()],
-            "transcript_ctx": TranscriptContext(steps=[], glossary=[], drops=[]),
+            "transcript_ctx": TranscriptContext(steps=[], key_terms=[], drops=[]),
             "script": good_script(pre, text="alpha 99"),  # clean_only: script_writer, already capped
             "edit_plan": good_plan(pre, speed=9.0),  # edl_valid: video_editor, alive
         }
@@ -356,7 +356,7 @@ def test_edit_stage_check_can_return_to_script_writer() -> None:
         update={
             "stage": "edit",
             "seg_contexts": [fresh_segment()],
-            "transcript_ctx": TranscriptContext(steps=[], glossary=[], drops=[]),
+            "transcript_ctx": TranscriptContext(steps=[], key_terms=[], drops=[]),
             "script": good_script(pre, target_min=5.0, target_max=6.0),
             "edit_plan": good_plan(pre),
         }

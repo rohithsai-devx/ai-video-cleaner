@@ -78,7 +78,7 @@ def _results(state: AgentState) -> list[CheckResult]:
         )
     return [
         code_checks.length_fit(state.script, state.voice_wps),
-        code_checks.glossary_kept(state.script, state.transcript_ctx.glossary, state.pre.words),
+        code_checks.key_terms_kept(state.script, state.transcript_ctx.key_terms, state.pre.words),
         code_checks.coverage_order(state.script, state.pre.segments),
         code_checks.nothing_invented(state.script, state.pre.words, state.seg_contexts),
         code_checks.clean_only(state.script, state.pre.words, state.voice),

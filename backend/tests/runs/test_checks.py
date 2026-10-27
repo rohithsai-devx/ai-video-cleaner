@@ -18,7 +18,7 @@ from app.runs.checks import (
     clean_only,
     coverage_order,
     edl_covers_script,
-    glossary_kept,
+    key_terms_kept,
     length_fit,
     nothing_invented,
     recheck,
@@ -126,12 +126,12 @@ def test_length_fit_tolerates_word_granularity_at_a_single_value_target() -> Non
     )
 
 
-def test_glossary_kept_rejects_a_term_spoken_in_the_span_but_missing_from_the_block() -> None:
+def test_key_terms_kept_rejects_a_term_spoken_in_the_span_but_missing_from_the_block() -> None:
     words = [Word(w="Export", start=1.0, end=1.4)]
     script = Script(blocks=[_block(text="Open the menu.", source_span=(0.0, 5.0))])
     _expect(
-        glossary_kept(script, ["Export"], words),
-        name="glossary_kept",
+        key_terms_kept(script, ["Export"], words),
+        name="key_terms_kept",
         passed=False,
         target="script_writer",
         ref_id="b1",
@@ -139,13 +139,13 @@ def test_glossary_kept_rejects_a_term_spoken_in_the_span_but_missing_from_the_bl
     )
 
 
-def test_glossary_kept_allows_a_different_case_and_ignores_a_term_outside_the_span() -> None:
+def test_key_terms_kept_allows_a_different_case_and_ignores_a_term_outside_the_span() -> None:
     # "export" matches Export. PDF starts at the span end, so it was not spoken here.
     words = [Word(w="export", start=1.0, end=1.4), Word(w="PDF", start=5.0, end=5.4)]
     script = Script(blocks=[_block(text="open the export menu", source_span=(0.0, 5.0))])
     _expect(
-        glossary_kept(script, ["Export", "PDF"], words),
-        name="glossary_kept",
+        key_terms_kept(script, ["Export", "PDF"], words),
+        name="key_terms_kept",
         passed=True,
         target="script_writer",
         ref_id=None,
@@ -345,7 +345,7 @@ def _passing_inputs() -> tuple[
         Script(blocks=[block]),
         EditPlan(entries=[_entry(src=(0.0, 4.0), action="speed", speed=2.0, freeze_s=0.5)]),
         [_ctx("s1", ["Export"])],
-        TranscriptContext(steps=[], glossary=["PDF"], drops=[]),
+        TranscriptContext(steps=[], key_terms=["PDF"], drops=[]),
         words,
         [_seg("s1", active=True)],
     )
@@ -356,7 +356,7 @@ def test_recheck_recomputes_every_check_and_drops_stale_script_results() -> None
     fresh = recheck(script, plan, contexts, transcript, words, segments, 10.0, "original", 2.0)
     assert [c.name for c in fresh] == [
         "length_fit",
-        "glossary_kept",
+        "key_terms_kept",
         "coverage_order",
         "nothing_invented",
         "clean_only",

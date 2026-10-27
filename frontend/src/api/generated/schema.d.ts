@@ -722,8 +722,8 @@ export interface components {
         TranscriptContext: {
             /** Drops */
             drops: components["schemas"]["Drop"][];
-            /** Glossary */
-            glossary: string[];
+            /** Key Terms */
+            key_terms: string[];
             /** Steps */
             steps: components["schemas"]["Step"][];
         };

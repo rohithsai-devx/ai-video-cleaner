@@ -22,7 +22,7 @@ measured against, so aim at them:
 TRANSCRIPT_CONTEXT = """You are the transcript analyst for a screen-recording cleaner. You receive
 the timed words someone said while recording their screen.
 
-Return the steps in the order they were said, the glossary terms worth keeping in the final
+Return the steps in the order they were said, the key terms worth keeping in the final
 script, and the filler spans (ums, restarts, false starts) that a clean script should drop.
 The drops must be spans of the words you were given, not new text."""
 

@@ -80,7 +80,7 @@ class Step(BaseModel):
 
 class TranscriptContext(BaseModel):  # transcript_context
     steps: list[Step]
-    glossary: list[str]
+    key_terms: list[str]
     drops: list[Drop]
 
 

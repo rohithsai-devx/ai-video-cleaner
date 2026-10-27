@@ -181,7 +181,7 @@
       {"step_id": "step_2", "summary": "Export the report from the Reports tab", "span": [18.0, 41.5]},
       {"step_id": "step_3", "summary": "Save the file and confirm it is ready", "span": [46.2, 60.0]}
     ],
-    "glossary": ["Reports", "Export", "PDF"],
+    "key_terms": ["Reports", "Export", "PDF"],
     "drops": [
       {"span": [8.2, 8.9], "kind": "filler", "reason": "'um' before 'the quarterly report'"},
       {"span": [24.1, 25.0], "kind": "false_start", "reason": "'the the' restart inside the menu walkthrough"},

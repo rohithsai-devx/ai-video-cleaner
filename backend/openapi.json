@@ -1170,11 +1170,11 @@
             "title": "Drops",
             "type": "array"
           },
-          "glossary": {
+          "key_terms": {
             "items": {
               "type": "string"
             },
-            "title": "Glossary",
+            "title": "Key Terms",
             "type": "array"
           },
           "steps": {
@@ -1187,7 +1187,7 @@
         },
         "required": [
           "steps",
-          "glossary",
+          "key_terms",
           "drops"
         ],
         "title": "TranscriptContext",

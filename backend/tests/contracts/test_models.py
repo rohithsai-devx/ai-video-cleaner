@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from app.auth.schemas import SignUp
 from app.contracts import enums
-from app.contracts.pipeline import AgentState, Proposal, SegContext, merge_by
+from app.contracts.pipeline import AgentState, Proposal, SegContext, TranscriptContext, merge_by
 from app.glossary.schemas import GlossaryTerm
 from app.runs.schemas import RunCreate
 from app.shares.schemas import ShareCreate
@@ -109,6 +109,11 @@ def test_agent_state_uses_merge_by_for_seg_contexts() -> None:
     # The reducer is attached through Annotated metadata; pydantic keeps it on the field.
     metadata = AgentState.model_fields["seg_contexts"].metadata
     assert len(metadata) == 1 and callable(metadata[0])
+
+
+def test_transcript_context_names_transcript_terms_key_terms() -> None:
+    context = TranscriptContext(steps=[], key_terms=["PDF"], drops=[])
+    assert context.key_terms == ["PDF"]
 
 
 @pytest.mark.parametrize("sql_name", sorted(PAIRS))

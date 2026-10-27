@@ -38,7 +38,7 @@ def stub_proposal(run: RunRef, pre: PreprocessResult) -> AgentOutput:
         script=Script(blocks=[block]),
         edit_plan=plan,
         seg_contexts=contexts,
-        transcript_ctx=TranscriptContext(steps=[], glossary=[], drops=[]),
+        transcript_ctx=TranscriptContext(steps=[], key_terms=[], drops=[]),
         checks=[edl_valid(plan, contexts, pre.duration)],
         flags=[],
     )

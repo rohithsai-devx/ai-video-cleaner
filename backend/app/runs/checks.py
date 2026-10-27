@@ -73,16 +73,16 @@ def length_fit(script: Script, voice_wps: float) -> CheckResult:
     return _script("length_fit", problems, ref)
 
 
-def glossary_kept(script: Script, glossary: list[str], words: list[Word]) -> CheckResult:
+def key_terms_kept(script: Script, key_terms: list[str], words: list[Word]) -> CheckResult:
     problems: list[str] = []
     ref: str | None = None
     for block in script.blocks:
         spoken = _span_text(words, block.source_span)
-        missing = [term for term in glossary if _has_term(term, spoken) and not _has_term(term, block.text)]
+        missing = [term for term in key_terms if _has_term(term, spoken) and not _has_term(term, block.text)]
         if missing:
             ref = ref or block.block_id
             problems.append(f"{block.block_id}: missing {', '.join(missing)}")
-    return _script("glossary_kept", problems, ref)
+    return _script("key_terms_kept", problems, ref)
 
 
 def coverage_order(script: Script, segments: list[Segment]) -> CheckResult:
@@ -178,7 +178,7 @@ def recheck(
     """Recompute every check from the current proposal. Stale script checks are not kept."""
     return [
         length_fit(script, voice_wps),
-        glossary_kept(script, transcript.glossary, words),
+        key_terms_kept(script, transcript.key_terms, words),
         coverage_order(script, segments),
         nothing_invented(script, words, seg_contexts),
         clean_only(script, words, voice),
