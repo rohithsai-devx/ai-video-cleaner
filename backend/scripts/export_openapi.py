@@ -32,6 +32,7 @@ REQUIRED: set[tuple[str, str]] = {
     ("put", "/runs/{}/proposal"),
     ("post", "/runs/{}/approve"),
     ("post", "/runs/{}/cancel"),
+    ("post", "/runs/{}/retry"),
     ("post", "/videos/{}/shares"),
     ("get", "/videos/{}/shares"),
     ("get", "/s/{}"),

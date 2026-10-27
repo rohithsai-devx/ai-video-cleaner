@@ -62,6 +62,12 @@ def _domain_errors() -> Iterator[None]:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
     except review.InvalidEdl as e:  # 422 only when the EDL would break the render
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.check.model_dump(mode="json")) from None
+    except lifecycle.RunNotFailed:
+        raise _conflict("run_not_failed", "run is not failed") from None
+    except lifecycle.RunNotCurrent:
+        raise _conflict("run_not_current", "run is not the video's current run") from None
+    except lifecycle.RunNotRetryable:
+        raise _conflict("not_retryable", "run failure cannot be retried") from None
     except lifecycle.Lost:
         raise _conflict("run_changed", "run changed concurrently") from None
 
@@ -148,6 +154,18 @@ async def cancel(run_id: UUID, user_id: CurrentUser) -> RunSummary:
             events = await lifecycle.advance(conn, run, "cancelled")
     await publish_all(run.id, events)
     return RunSummary(run_id=str(run.id), status="cancelled", stage=run.stage)
+
+
+@router.post("/runs/{run_id}/retry", status_code=status.HTTP_202_ACCEPTED, tags=["runs"])
+async def retry(run_id: UUID, user_id: CurrentUser) -> RunSummary:
+    async with tenant_tx(user_id) as conn:
+        with _domain_errors():
+            result = await lifecycle.retry(conn, run_id)
+        if result is None:
+            raise not_found("run")
+        run, events = result
+    await publish_all(run.id, events)
+    return RunSummary(run_id=str(run.id), status=run.status, stage=run.stage)
 
 
 _TERMINAL_STATUS = frozenset({"done", "failed", "cancelled"})

@@ -7,6 +7,18 @@ class Lost(Exception):
     """The compare-and-set changed 0 rows: another writer won."""
 
 
+class RunNotFailed(Exception):
+    """Retry was requested for a run that is not failed."""
+
+
+class RunNotCurrent(Exception):
+    """Retry was requested for a run that is no longer the video's current run."""
+
+
+class RunNotRetryable(Exception):
+    """The failure cannot be retried."""
+
+
 class LiveRunExists(Exception):
     """runs_one_live_per_video: the video already has a live run."""
 

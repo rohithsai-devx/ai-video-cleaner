@@ -5,7 +5,7 @@ transaction (tenant_tx for the API, worker_tx for workers) and publish the retur
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Final, LiteralString
 from uuid import UUID
@@ -19,6 +19,9 @@ from app.contracts.events import RunFailedEvent, RunStatusEvent
 from app.contracts.pipeline import FixOptions
 from app.runs.exceptions import LiveRunExists as LiveRunExists
 from app.runs.exceptions import Lost as Lost
+from app.runs.exceptions import RunNotCurrent as RunNotCurrent
+from app.runs.exceptions import RunNotFailed as RunNotFailed
+from app.runs.exceptions import RunNotRetryable as RunNotRetryable
 from app.runs.exceptions import VideoNotFound as VideoNotFound
 from app.runs.exceptions import VideoNotStartable as VideoNotStartable
 from app.runs.schemas import Run, RunListItem
@@ -64,10 +67,11 @@ class RunRef:
     attempt: int
     mode: RunMode
     duration_s: float | None  # video duration, else runs.pre.duration
+    error: RunFailedEvent | None = None
 
 
 _REF_SQL: Final = (
-    "select r.id, r.workspace_id, r.video_id, r.status, r.stage, r.attempt, r.mode, r.pre,"
+    "select r.id, r.workspace_id, r.video_id, r.status, r.stage, r.attempt, r.mode, r.pre, r.error,"
     " v.duration_s as video_duration_s from runs r join videos v on v.id = r.video_id where r.id = %s"
 )
 
@@ -87,6 +91,7 @@ def _ref(row: dict[str, Any]) -> RunRef:
         attempt=row["attempt"],
         mode=row["mode"],
         duration_s=duration,
+        error=RunFailedEvent.model_validate(row["error"]) if row["error"] else None,
     )
 
 
@@ -214,6 +219,7 @@ async def advance(
     stage: str | None = None,
     error: RunFailedEvent | None = None,
     output_uri: str | None = None,
+    retry: bool = False,
 ) -> list[Event]:
     """Move run.status to ``to`` and do what entering ``to`` requires. Raises Lost on 0 rows."""
     if to == "done" and not output_uri:
@@ -228,6 +234,11 @@ async def advance(
     if error is not None:
         run_sets.append(sql.SQL("error = %(error)s"))
         params["error"] = Jsonb(error.model_dump(mode="json"))
+    if retry:
+        run_sets.extend(
+            [sql.SQL("attempt = %(attempt)s"), sql.SQL("finished_at = null"), sql.SQL("error = null")]
+        )
+        params["attempt"] = run.attempt
     if to == "preprocessing":
         run_sets.append(sql.SQL("started_at = coalesce(started_at, now())"))
     if to in _FINISHED:
@@ -266,3 +277,64 @@ async def advance(
             payload={"run_id": str(run.id), "attempt": run.attempt},
         )
     return [("run.status", RunStatusEvent(status=to, stage=stage if stage is not None else run.stage))]
+
+
+async def retry(conn: Conn, run_id: UUID) -> tuple[RunRef, list[Event]] | None:
+    """Restart a failed current run at the failed stage's entry point, with one new attempt."""
+    run = await load(conn, run_id)
+    if run is None:
+        return None
+    if run.status != "failed":
+        raise RunNotFailed("run is not failed")
+    if run.error is not None and not run.error.retryable:
+        raise RunNotRetryable("run failure is not retryable")
+
+    video = await _one(
+        conn,
+        "select current_run_id from videos where id = %s for update",
+        (run.video_id,),
+    )
+    if video is None or video["current_run_id"] != run.id:
+        raise RunNotCurrent("run is not the video's current run")
+
+    if run.stage is None or run.stage == "preprocess":
+        target, target_stage, video_status = "preprocessing", "preprocess", "processing"
+    elif run.stage == "agent":
+        target, target_stage, video_status = "agent_running", "agent", "processing"
+    elif run.stage in ("approved", "render"):
+        target, target_stage, video_status = "postprocessing", "render", "rendering"
+    else:
+        raise RunNotRetryable("run stage cannot be retried")
+
+    bumped = replace(run, attempt=run.attempt + 1)
+    events = await advance(conn, bumped, target, stage=target_stage, retry=True)
+    cur = await conn.execute(
+        "update videos set status = %s::video_status where id = %s and current_run_id = %s",
+        (video_status, run.video_id, run.id),
+    )
+    if cur.rowcount != 1:
+        raise Lost(f"video {run.video_id} changed current run during retry")
+
+    if target == "preprocessing":
+        await enqueue(
+            conn,
+            workspace_id=run.workspace_id,
+            run_id=run.id,
+            queue="pre-cpu",
+            stage="pre-cpu",
+            attempt=bumped.attempt,
+            payload={"run_id": str(run.id), "video_id": str(run.video_id), "attempt": bumped.attempt},
+        )
+    elif target == "postprocessing":
+        await enqueue(
+            conn,
+            workspace_id=run.workspace_id,
+            run_id=run.id,
+            queue="post-io",
+            stage="post-io",
+            attempt=bumped.attempt,
+            payload={"run_id": str(run.id), "attempt": bumped.attempt},
+        )
+
+    current = replace(bumped, status=target, stage=target_stage, error=None)
+    return current, events

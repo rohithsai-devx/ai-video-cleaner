@@ -78,3 +78,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** psycopg decodes PostgreSQL `numeric` columns as `Decimal`, while elapsed-time ratios are floats.
 - **Fix:** convert database durations to `float` before combining them with floating-point rates.
 - **Takeaway:** normalize numeric database values before mixing them with computed floats.
+
+### Imported API fixtures need their dependencies imported too (2026-10-27)
+- **Symptom:** a test importing the `api` fixture from `tests.factories` errors with `fixture 'published' not found`.
+- **Root cause:** pytest discovers an imported fixture when the test module imports it, but does not automatically register its fixture dependencies from the fixture's defining module.
+- **Fix:** import `published` from `tests.factories` in the test module that imports `api`.
+- **Takeaway:** when reusing a fixture across test modules, import its fixture dependencies as well.

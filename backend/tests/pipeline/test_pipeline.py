@@ -105,7 +105,7 @@ async def _start_run(user_id: UUID, mode: str, storage: GcsStorage) -> tuple[UUI
 async def _status(user_id: UUID, run_id: UUID) -> dict[str, Any]:
     async with db.tenant_tx(user_id) as conn:
         cur = await conn.execute(
-            "select r.status, r.finished_at, r.started_at, v.status as video_status, v.output_uri"
+            "select r.status, r.attempt, r.finished_at, r.started_at, v.status as video_status, v.output_uri"
             " from runs r join videos v on v.id = r.video_id where r.id = %s",
             (run_id,),
         )
@@ -229,16 +229,26 @@ async def test_old_attempt_task_is_a_noop(
     uid = await _signup(api)
     run_id, _, ws = await _start_run(uid, "review", storage)
     async with db.worker_tx(ws) as conn:
-        await conn.execute("update runs set attempt = 2 where id = %s", (run_id,))
+        run = await lifecycle.load(conn, run_id)
+        assert run is not None
+        await lifecycle.advance(
+            conn,
+            run,
+            "failed",
+            error=RunFailedEvent(stage="1", message="retry test", retryable=True),
+        )
+    async with db.tenant_tx(uid) as conn:
+        retry = await lifecycle.retry(conn, run_id)
+        assert retry is not None and retry[0].attempt == 2 and retry[0].status == "preprocessing"
 
     relay_url = get_settings().database_url_relay
     assert relay_url
     relay_conn = await db.connect_as(relay_url, db.RELAY_ROLE)
     try:
         cur = await relay_conn.execute(
-            "select count(*) as n from outbox where run_id = %s and queue = 'pre-cpu'", (run_id,)
+            "select queue, task_id, payload from outbox where run_id = %s order by id", (run_id,)
         )
-        before = await cur.fetchone()
+        before = await cur.fetchall()
     finally:
         await relay_conn.close()
 
@@ -252,17 +262,17 @@ async def test_old_attempt_task_is_a_noop(
     assert await stages.handle(task, FixtureEngines(storage), storage) == []
 
     row = await _status(uid, run_id)
-    assert row["status"] == "queued"
+    assert row["status"] == "preprocessing" and row["attempt"] == 2
     assert await _proposals(uid, run_id) == []
     relay_conn = await db.connect_as(relay_url, db.RELAY_ROLE)
     try:
         cur = await relay_conn.execute(
-            "select count(*) as n from outbox where run_id = %s and queue = 'pre-cpu'", (run_id,)
+            "select queue, task_id, payload from outbox where run_id = %s order by id", (run_id,)
         )
-        after = await cur.fetchone()
+        after = await cur.fetchall()
     finally:
         await relay_conn.close()
-    assert before == after == {"n": 1}
+    assert before == after
 
 
 async def test_duplicate_delivery_is_a_no_op(
