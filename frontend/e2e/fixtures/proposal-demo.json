@@ -1,0 +1,695 @@
+{
+  "proposal": {
+    "run_id": "demo-run",
+    "version": 1,
+    "source": "agent",
+    "flags": [],
+    "checks": [],
+    "seg_contexts": [],
+    "transcript_ctx": {
+      "drops": [],
+      "key_terms": ["Acme Cloud"],
+      "steps": [
+        {
+          "step_id": "step-signin",
+          "title": "Sign in",
+          "summary": "Sign in to the workspace.",
+          "span": [0, 31]
+        },
+        {
+          "step_id": "step-create",
+          "title": "Create the project",
+          "summary": "Create and configure the project.",
+          "span": [31, 65]
+        },
+        {
+          "step_id": "step-billing",
+          "title": "Billing page",
+          "summary": "Review billing.",
+          "span": [65, 160]
+        },
+        {
+          "step_id": "step-invite",
+          "title": "Invite your team",
+          "summary": "Invite teammates.",
+          "span": [160, 372]
+        }
+      ]
+    },
+    "script": {
+      "style": "clean",
+      "blocks": [
+        {
+          "block_id": "block-signin",
+          "text": "Sign in to begin.",
+          "est_dur": 3.0,
+          "seg_ids": ["keep-0"],
+          "source_span": [0, 31],
+          "target_min": 2,
+          "target_max": 5
+        },
+        {
+          "block_id": "block-create",
+          "text": "Create the project and choose your settings.",
+          "est_dur": 7.0,
+          "seg_ids": ["keep-2", "screen-42"],
+          "source_span": [31, 65],
+          "target_min": 5,
+          "target_max": 9
+        },
+        {
+          "block_id": "block-billing",
+          "text": "Review the plan on the billing page.",
+          "est_dur": 5.0,
+          "seg_ids": ["screen-billing"],
+          "source_span": [65, 160],
+          "target_min": 4,
+          "target_max": 7
+        },
+        {
+          "block_id": "block-team",
+          "text": "Invite your team to the app.",
+          "est_dur": 6.0,
+          "seg_ids": ["screen-team"],
+          "source_span": [160, 372],
+          "target_min": 5,
+          "target_max": 8
+        }
+      ]
+    },
+    "edit_plan": {
+      "entries": [
+        {
+          "seg_id": "keep-0",
+          "action": "keep",
+          "src": [0, 10],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "pause-1",
+          "action": "cut",
+          "src": [10, 30],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "A long pause added no new information.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-1",
+          "action": "keep",
+          "src": [30, 31],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-2",
+          "action": "keep",
+          "src": [31, 36],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "filler-1",
+          "action": "cut",
+          "src": [36, 38],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "A filler word interrupted the explanation.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-3",
+          "action": "keep",
+          "src": [38, 42],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "screen-42",
+          "action": "keep",
+          "src": [42, 46],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-4",
+          "action": "keep",
+          "src": [46, 51],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-5",
+          "action": "keep",
+          "src": [51, 65],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "screen-billing",
+          "action": "keep",
+          "src": [65, 80],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "speed-1",
+          "action": "speed",
+          "src": [80, 100],
+          "speed": 2,
+          "freeze_s": 0,
+          "reasoning": "The settings wait is clearer at twice the speed.",
+          "block_id": null
+        },
+        {
+          "seg_id": "retake-1",
+          "action": "cut",
+          "src": [100, 115],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "The first attempt was replaced by a retake.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-6",
+          "action": "keep",
+          "src": [115, 140],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "pause-2",
+          "action": "cut",
+          "src": [140, 160],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "A pause interrupted the billing walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-7",
+          "action": "keep",
+          "src": [160, 170],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "speed-2",
+          "action": "speed",
+          "src": [170, 190],
+          "speed": 2,
+          "freeze_s": 0,
+          "reasoning": "The second wait is clearer at twice the speed.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-8",
+          "action": "keep",
+          "src": [190, 214],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "screen-team",
+          "action": "keep",
+          "src": [214, 220],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "retake-2",
+          "action": "cut",
+          "src": [220, 237],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "The repeated step was removed.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-9",
+          "action": "keep",
+          "src": [237, 310],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-10",
+          "action": "keep",
+          "src": [310, 327],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        },
+        {
+          "seg_id": "cut-end",
+          "action": "cut",
+          "src": [327, 360],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "The recording continued after the walkthrough ended.",
+          "block_id": null
+        },
+        {
+          "seg_id": "keep-end",
+          "action": "keep",
+          "src": [360, 372],
+          "speed": 1,
+          "freeze_s": 0,
+          "reasoning": "Keep this part of the walkthrough.",
+          "block_id": null
+        }
+      ]
+    },
+    "spots": [
+      {
+        "spot_id": "spot-narration",
+        "span": [42, 46],
+        "question": "The narration runs about 4 seconds longer than the screen here.",
+        "fixes": [
+          {
+            "fix_id": "shorten",
+            "label": "Shorten the narration",
+            "patch": {
+              "block": {
+                "block_id": "block-create",
+                "text": "Create the project."
+              }
+            }
+          },
+          {
+            "fix_id": "hold",
+            "label": "Hold the last frame 4 s",
+            "patch": {
+              "entry": {
+                "seg_id": "screen-42",
+                "action": "freeze",
+                "speed": 1,
+                "freeze_s": 4
+              }
+            }
+          },
+          {
+            "fix_id": "slow",
+            "label": "Slow the screen to 0.7\u00d7",
+            "patch": {
+              "entry": {
+                "seg_id": "screen-42",
+                "action": "speed",
+                "speed": 0.7,
+                "freeze_s": 0
+              }
+            }
+          }
+        ],
+        "chosen_fix_id": null,
+        "chosen_by": null
+      },
+      {
+        "spot_id": "spot-billing",
+        "span": [65, 80],
+        "question": "There are 15 seconds with nothing said on the billing page.",
+        "fixes": [
+          {
+            "fix_id": "add-line",
+            "label": "Add a line",
+            "patch": {
+              "block": {
+                "block_id": "block-billing",
+                "text": "Open billing to review your plan."
+              }
+            }
+          },
+          {
+            "fix_id": "speed-billing",
+            "label": "Speed it up 2\u00d7",
+            "patch": {
+              "entry": {
+                "seg_id": "screen-billing",
+                "action": "speed",
+                "speed": 2,
+                "freeze_s": 0
+              }
+            }
+          },
+          {
+            "fix_id": "cut-billing",
+            "label": "Cut it",
+            "patch": {
+              "entry": {
+                "seg_id": "screen-billing",
+                "action": "cut",
+                "speed": 1,
+                "freeze_s": 0
+              }
+            }
+          }
+        ],
+        "chosen_fix_id": null,
+        "chosen_by": null
+      },
+      {
+        "spot_id": "spot-product-name",
+        "span": [214, 220],
+        "question": "The narration says the app, but the screen shows Acme Cloud.",
+        "fixes": [
+          {
+            "fix_id": "use-brand",
+            "label": "Use Acme Cloud",
+            "patch": {
+              "block": {
+                "block_id": "block-team",
+                "text": "Invite your team to Acme Cloud."
+              }
+            }
+          },
+          {
+            "fix_id": "keep-app",
+            "label": "Keep the app",
+            "patch": {
+              "block": {
+                "block_id": "block-team",
+                "text": "Invite your team to the app."
+              }
+            }
+          }
+        ],
+        "chosen_fix_id": null,
+        "chosen_by": null
+      }
+    ]
+  },
+  "keyframes": [
+    {
+      "frame_id": "frame-0",
+      "t": 0,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#e8eef2'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-1",
+      "t": 31,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#dbe6ee'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-2",
+      "t": 65,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#eff1dc'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-3",
+      "t": 100,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#e6edf3'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-4",
+      "t": 160,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#e7e0ef'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-5",
+      "t": 214,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#e7f0e4'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-6",
+      "t": 300,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#f0e6dc'/%3E%3C/svg%3E"
+    },
+    {
+      "frame_id": "frame-7",
+      "t": 372,
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 68'%3E%3Crect width='120' height='68' fill='#e9edf0'/%3E%3C/svg%3E"
+    }
+  ],
+  "changes": [
+    {
+      "change_id": "pause-1",
+      "kind": "pause",
+      "span": [10, 30],
+      "speed": null,
+      "hold_s": null,
+      "reason": "A long pause added no new information.",
+      "undone": false
+    },
+    {
+      "change_id": "filler-1",
+      "kind": "filler",
+      "span": [36, 38],
+      "speed": null,
+      "hold_s": null,
+      "reason": "A filler word interrupted the explanation.",
+      "undone": false
+    },
+    {
+      "change_id": "speed-1",
+      "kind": "speed",
+      "span": [80, 100],
+      "speed": 2,
+      "hold_s": null,
+      "reason": "The settings wait is clearer at twice the speed.",
+      "undone": false
+    },
+    {
+      "change_id": "retake-1",
+      "kind": "retake",
+      "span": [100, 115],
+      "speed": null,
+      "hold_s": null,
+      "reason": "The first attempt was replaced by a retake.",
+      "undone": false
+    },
+    {
+      "change_id": "pause-2",
+      "kind": "pause",
+      "span": [140, 160],
+      "speed": null,
+      "hold_s": null,
+      "reason": "A pause interrupted the billing walkthrough.",
+      "undone": false
+    },
+    {
+      "change_id": "speed-2",
+      "kind": "speed",
+      "span": [170, 190],
+      "speed": 2,
+      "hold_s": null,
+      "reason": "The second wait is clearer at twice the speed.",
+      "undone": false
+    },
+    {
+      "change_id": "retake-2",
+      "kind": "retake",
+      "span": [220, 237],
+      "speed": null,
+      "hold_s": null,
+      "reason": "The repeated step was removed.",
+      "undone": false
+    },
+    {
+      "change_id": "cut-end",
+      "kind": "cut",
+      "span": [327, 360],
+      "speed": null,
+      "hold_s": null,
+      "reason": "The recording continued after the walkthrough ended.",
+      "undone": false
+    }
+  ],
+  "spots": [
+    {
+      "spot_id": "spot-narration",
+      "span": [42, 46],
+      "question": "The narration runs about 4 seconds longer than the screen here.",
+      "fixes": [
+        {
+          "fix_id": "shorten",
+          "label": "Shorten the narration",
+          "patch": {
+            "block": {
+              "block_id": "block-create",
+              "text": "Create the project."
+            }
+          }
+        },
+        {
+          "fix_id": "hold",
+          "label": "Hold the last frame 4 s",
+          "patch": {
+            "entry": {
+              "seg_id": "screen-42",
+              "action": "freeze",
+              "speed": 1,
+              "freeze_s": 4
+            }
+          }
+        },
+        {
+          "fix_id": "slow",
+          "label": "Slow the screen to 0.7\u00d7",
+          "patch": {
+            "entry": {
+              "seg_id": "screen-42",
+              "action": "speed",
+              "speed": 0.7,
+              "freeze_s": 0
+            }
+          }
+        }
+      ],
+      "chosen_fix_id": null,
+      "chosen_by": null
+    },
+    {
+      "spot_id": "spot-billing",
+      "span": [65, 80],
+      "question": "There are 15 seconds with nothing said on the billing page.",
+      "fixes": [
+        {
+          "fix_id": "add-line",
+          "label": "Add a line",
+          "patch": {
+            "block": {
+              "block_id": "block-billing",
+              "text": "Open billing to review your plan."
+            }
+          }
+        },
+        {
+          "fix_id": "speed-billing",
+          "label": "Speed it up 2\u00d7",
+          "patch": {
+            "entry": {
+              "seg_id": "screen-billing",
+              "action": "speed",
+              "speed": 2,
+              "freeze_s": 0
+            }
+          }
+        },
+        {
+          "fix_id": "cut-billing",
+          "label": "Cut it",
+          "patch": {
+            "entry": {
+              "seg_id": "screen-billing",
+              "action": "cut",
+              "speed": 1,
+              "freeze_s": 0
+            }
+          }
+        }
+      ],
+      "chosen_fix_id": null,
+      "chosen_by": null
+    },
+    {
+      "spot_id": "spot-product-name",
+      "span": [214, 220],
+      "question": "The narration says the app, but the screen shows Acme Cloud.",
+      "fixes": [
+        {
+          "fix_id": "use-brand",
+          "label": "Use Acme Cloud",
+          "patch": {
+            "block": {
+              "block_id": "block-team",
+              "text": "Invite your team to Acme Cloud."
+            }
+          }
+        },
+        {
+          "fix_id": "keep-app",
+          "label": "Keep the app",
+          "patch": {
+            "block": {
+              "block_id": "block-team",
+              "text": "Invite your team to the app."
+            }
+          }
+        }
+      ],
+      "chosen_fix_id": null,
+      "chosen_by": null
+    }
+  ],
+  "chapters": [
+    {
+      "title": "Sign in",
+      "start": 0,
+      "end": 31
+    },
+    {
+      "title": "Create the project",
+      "start": 31,
+      "end": 65
+    },
+    {
+      "title": "Billing page",
+      "start": 65,
+      "end": 160
+    },
+    {
+      "title": "Invite your team",
+      "start": 160,
+      "end": 372
+    }
+  ],
+  "script_lines": [
+    {
+      "block_id": "block-signin",
+      "text": "Sign in to begin.",
+      "start": 0,
+      "end": 8,
+      "overflow_s": 0
+    },
+    {
+      "block_id": "block-create",
+      "text": "Create the project and choose your settings.",
+      "start": 31,
+      "end": 42,
+      "overflow_s": 4
+    },
+    {
+      "block_id": "block-billing",
+      "text": "Review the plan on the billing page.",
+      "start": 65,
+      "end": 80,
+      "overflow_s": 0
+    },
+    {
+      "block_id": "block-team",
+      "text": "Invite your team to the app.",
+      "start": 214,
+      "end": 220,
+      "overflow_s": 0
+    }
+  ],
+  "waveform_url": "https://storage.example.test/waveform.json"
+}

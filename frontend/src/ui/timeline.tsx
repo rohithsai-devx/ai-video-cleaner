@@ -25,6 +25,7 @@ export type TimelineTrack = {
   items: TimelineItem[];
   /** Omit for tracks without audio; pass null when a waveform should be shown but is unavailable. */
   waveform?: WaveformData | null;
+  dimmed?: boolean;
 };
 
 export type TimelineProps = {
@@ -41,6 +42,11 @@ const ITEM_TONE: Record<string, string> = {
   speed: "border-accent-strong bg-accent-soft text-ink",
   "needs-you": "border-flag bg-flag-soft text-ink",
   spot: "border-flag bg-flag-soft text-ink",
+  frame: "border-transparent bg-transparent text-ink",
+  hold: "border-accent-strong bg-accent-soft text-ink",
+  "voice-line": "border-accent-strong bg-accent-soft text-ink",
+  overflow: "border-danger bg-danger text-white",
+  faded: "border-0 bg-surface/70 text-muted opacity-35",
 };
 
 function clamp(value: number, duration: number): number {
@@ -163,7 +169,10 @@ export function Timeline({
               key={track.id}
               role="group"
               aria-label={`${track.label} track`}
-              className="col-span-2 grid grid-cols-[96px_minmax(900px,1fr)] gap-x-3"
+              className={cx(
+                "col-span-2 grid grid-cols-[96px_minmax(900px,1fr)] gap-x-3",
+                track.dimmed && "opacity-50",
+              )}
             >
               <div className="flex min-h-14 flex-col justify-center">
                 <span className="text-xs font-medium text-ink-2">{track.label}</span>
@@ -217,6 +226,7 @@ export function Timeline({
                           "absolute top-1 z-20 flex min-h-11 items-center justify-center overflow-hidden rounded-md border px-1 text-[11px] leading-tight",
                           "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink",
                           tone,
+                          (item.kind === "needs-you" || item.kind === "spot") && "border-2",
                           selected &&
                             "border-2 border-ink outline outline-1 outline-offset-1 outline-ink",
                         )}

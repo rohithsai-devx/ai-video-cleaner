@@ -1,12 +1,13 @@
 "use client";
 
 import { CaretLeft, WarningCircle } from "@phosphor-icons/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useReducer, useState } from "react";
 import { $api, fetchClient } from "@/api/client";
 import type { components } from "@/api/generated/schema";
+import { fetchWaveformPeaks } from "@/api/waveform";
 import { formatClock } from "@/lib/clock";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -32,6 +33,7 @@ import {
 } from "./review-model";
 import { ScriptPanel } from "./script-panel";
 import { initialUndoState, undoReducer } from "./undo-model";
+import { buildReviewTracks, playerSegmentsFromEntries } from "./review-track-model";
 
 type ProposalChange = components["schemas"]["Change"];
 
@@ -47,6 +49,17 @@ export function ReviewScreen({ id }: { id: string }) {
     { params: { path: { video_id: run.data?.video_id ?? "" } } },
     { enabled: Boolean(run.data) },
   );
+  const waveform = useQuery({
+    queryKey: ["review-waveform", id],
+    queryFn: ({ signal }) => {
+      const url = view.data?.waveform_url;
+      if (!url) throw new Error("Waveform URL is unavailable");
+      return fetchWaveformPeaks(url, signal);
+    },
+    enabled: Boolean(view.data?.waveform_url),
+    staleTime: Infinity,
+    retry: false,
+  });
   const voices = $api.useQuery("get", "/voices", {}, { enabled: run.data?.voice === "ai" });
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [undoState, dispatchUndo] = useReducer(undoReducer, initialUndoState);
@@ -97,6 +110,22 @@ export function ReviewScreen({ id }: { id: string }) {
     run.data?.voice === "ai"
       ? `AI voice (${voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label ?? "AI voice"})`
       : "my voice";
+  const chapters = (view.data?.chapters ?? []) as unknown as components["schemas"]["Chapter"][];
+  const spots = (view.data?.spots ?? []) as unknown as components["schemas"]["Spot"][];
+  const scriptLines = (view.data?.script_lines ??
+    []) as unknown as components["schemas"]["ScriptLine"][];
+  const segments = playerSegmentsFromEntries(entries, changes);
+  const tracks = buildReviewTracks({
+    duration,
+    voice: run.data?.voice ?? "original",
+    entries,
+    changes,
+    spots,
+    chapters,
+    keyframes: view.data?.keyframes ?? [],
+    scriptLines,
+    waveform: waveform.data ?? null,
+  });
   const setChangeUndone = (change: (typeof changes)[number], type: "undo" | "redo") => {
     const current =
       draft.entryOverrides?.[change.change_id] ??
@@ -304,6 +333,8 @@ export function ReviewScreen({ id }: { id: string }) {
                 src={playerSrc}
                 duration={duration}
                 mode="cleaned-preview"
+                segments={segments}
+                chapters={chapters}
                 badge={`Cleaned · ${run.data?.voice === "ai" ? "AI voice" : "my voice"}`}
                 onTime={setPlayhead}
                 seekTo={seekTo}
@@ -323,10 +354,43 @@ export function ReviewScreen({ id }: { id: string }) {
             <Timeline
               duration={duration}
               playhead={playhead}
-              tracks={[]}
+              tracks={tracks}
               onSeek={setSeekTo}
               onSelect={() => undefined}
             />
+            <ul className="m-0 mt-3 flex list-none flex-wrap gap-4 p-0 text-xs text-muted">
+              <li className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-3 w-3 rounded-sm border border-dashed border-line-strong bg-sunken"
+                />
+                Removed
+              </li>
+              <li className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-5 min-w-7 items-center justify-center rounded bg-accent-soft px-1 font-mono text-[10px] text-ink"
+                >
+                  2×
+                </span>
+                Sped up
+              </li>
+              <li className="flex items-center gap-2">
+                <span aria-hidden="true" className="inline-block size-3 rounded-sm bg-flag" />
+                Needs you
+              </li>
+              <li className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-block size-3 rounded-sm border-2 border-ink"
+                />
+                Selected
+              </li>
+            </ul>
+            <p className="m-0 mt-3 text-xs text-muted">
+              Cleaned: playback jumps over removed parts. Click anything on the timeline to jump
+              there.
+            </p>
           </section>
         </main>
       )}
