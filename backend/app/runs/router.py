@@ -22,6 +22,7 @@ from app.runs.schemas import (
     Run,
     RunCreate,
     RunCreated,
+    RunListItem,
     RunSummary,
     VoiceList,
     VoiceOption,
@@ -85,6 +86,15 @@ async def get_run(run_id: UUID, user_id: CurrentUser) -> Run:
     if run is None:
         raise not_found("run")
     return run
+
+
+@router.get("/videos/{video_id}/runs", tags=["videos"])
+async def list_video_runs(video_id: UUID, user_id: CurrentUser) -> list[RunListItem]:
+    async with tenant_tx(user_id) as conn:
+        cur = await conn.execute("select id from videos where id = %s", (video_id,))
+        if await cur.fetchone() is None:
+            raise not_found("video")
+        return await lifecycle.list_for_video(conn, video_id)
 
 
 @router.get("/runs/{run_id}/proposal", tags=["runs"])

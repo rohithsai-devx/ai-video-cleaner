@@ -131,6 +131,31 @@ async def test_start_run_and_second_live_run_conflicts(
     assert (await api.post(f"/runs/{run_id}/cancel", headers=h)).status_code == 409
 
 
+async def test_run_history_is_newest_first_and_tenant_scoped(
+    api: httpx.AsyncClient, storage: FakeStorage
+) -> None:
+    h = await _user(api)
+    video = await _uploaded_video(api, h, storage)
+    path = f"/videos/{video['id']}/runs"
+    body = {"mode": "review", "voice": "original"}
+
+    older_id = (await api.post(path, json=body, headers=h)).json()["run_id"]
+    assert (await api.post(f"/runs/{older_id}/cancel", headers=h)).status_code == 202
+    newer_id = (await api.post(path, json=body, headers=h)).json()["run_id"]
+
+    response = await api.get(path, headers=h)
+    assert response.status_code == 200, response.text
+    runs = response.json()
+    assert [run["run_id"] for run in runs] == [newer_id, older_id]
+    assert [run["status"] for run in runs] == ["queued", "cancelled"]
+    assert runs[0]["created_at"] > runs[1]["created_at"]
+    assert all(run["voice"] == "original" and run["voice_id"] is None for run in runs)
+    assert all(run["needs_you"] == 0 for run in runs)
+
+    other_workspace = await _user(api)
+    assert (await api.get(path, headers=other_workspace)).status_code == 404
+
+
 async def test_run_requires_uploaded_video(api: httpx.AsyncClient) -> None:
     h = await _user(api)
     vid = (await api.post("/videos", json={}, headers=h)).json()["video_id"]

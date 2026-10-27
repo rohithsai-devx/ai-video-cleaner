@@ -200,7 +200,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Video Runs */
+        get: operations["list_video_runs_videos__video_id__runs_get"];
         put?: never;
         /** Start Run */
         post: operations["start_run_videos__video_id__runs_post"];
@@ -557,6 +558,33 @@ export interface components {
             retryable: boolean;
             /** Stage */
             stage: string;
+        };
+        /** RunListItem */
+        RunListItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Needs You
+             * @default 0
+             */
+            needs_you: number;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "preprocessing" | "agent_running" | "awaiting_review" | "approved" | "postprocessing" | "done" | "failed" | "cancelled";
+            /**
+             * Voice
+             * @enum {string}
+             */
+            voice: "original" | "ai";
+            /** Voice Id */
+            voice_id: string | null;
         };
         /** RunProposalReadyEvent */
         RunProposalReadyEvent: {
@@ -1251,6 +1279,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Video"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_video_runs_videos__video_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                video_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListItem"][];
                 };
             };
             /** @description Validation Error */

@@ -21,7 +21,7 @@ from app.runs.exceptions import LiveRunExists as LiveRunExists
 from app.runs.exceptions import Lost as Lost
 from app.runs.exceptions import VideoNotFound as VideoNotFound
 from app.runs.exceptions import VideoNotStartable as VideoNotStartable
-from app.runs.schemas import Run
+from app.runs.schemas import Run, RunListItem
 from app.shared.db import Conn, Queue, enqueue
 from app.shared.events import Event
 
@@ -119,6 +119,27 @@ async def load(conn: Conn, run_id: UUID, *, for_update: bool = True) -> RunRef |
 async def get(conn: Conn, run_id: UUID) -> Run | None:
     row = await _one(conn, "select * from runs where id = %s", (run_id,))
     return None if row is None else _to_run(row)
+
+
+async def list_for_video(conn: Conn, video_id: UUID) -> list[RunListItem]:
+    """Return a video's latest 20 attempts; visibility of the video is checked by the caller."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select id, status, created_at, voice, voice_id from runs"
+            " where video_id = %s order by created_at desc limit 20",
+            (video_id,),
+        )
+        rows = await cur.fetchall()
+    return [
+        RunListItem(
+            run_id=str(row["id"]),
+            status=row["status"],
+            created_at=row["created_at"],
+            voice=row["voice"],
+            voice_id=row["voice_id"],
+        )
+        for row in rows
+    ]
 
 
 async def start(

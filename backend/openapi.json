@@ -721,6 +721,67 @@
         "title": "RunFailedEvent",
         "type": "object"
       },
+      "RunListItem": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "needs_you": {
+            "default": 0,
+            "title": "Needs You",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "preprocessing",
+              "agent_running",
+              "awaiting_review",
+              "approved",
+              "postprocessing",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "voice": {
+            "enum": [
+              "original",
+              "ai"
+            ],
+            "title": "Voice",
+            "type": "string"
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Id"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "created_at",
+          "voice",
+          "voice_id"
+        ],
+        "title": "RunListItem",
+        "type": "object"
+      },
       "RunProposalReadyEvent": {
         "properties": {
           "auto_approved": {
@@ -2166,6 +2227,56 @@
       }
     },
     "/videos/{video_id}/runs": {
+      "get": {
+        "operationId": "list_video_runs_videos__video_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "video_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Video Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunListItem"
+                  },
+                  "title": "Response List Video Runs Videos  Video Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Video Runs",
+        "tags": [
+          "videos"
+        ]
+      },
       "post": {
         "operationId": "start_run_videos__video_id__runs_post",
         "parameters": [

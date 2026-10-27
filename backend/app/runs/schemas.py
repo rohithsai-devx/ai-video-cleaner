@@ -16,6 +16,15 @@ class RunSummary(BaseModel):
     stage: str | None = None
 
 
+class RunListItem(BaseModel):
+    run_id: str
+    status: RunStatus
+    created_at: datetime
+    voice: VoiceMode
+    voice_id: str | None
+    needs_you: int = 0
+
+
 class VoiceOption(BaseModel):
     id: str
     label: str
