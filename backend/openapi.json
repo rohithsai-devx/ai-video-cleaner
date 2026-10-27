@@ -1054,6 +1054,12 @@
             ],
             "title": "Expires At"
           },
+          "kind": {
+            "const": "cleaned",
+            "default": "cleaned",
+            "title": "Kind",
+            "type": "string"
+          },
           "visibility": {
             "default": "link",
             "enum": [
@@ -1070,6 +1076,11 @@
       },
       "ShareCreated": {
         "properties": {
+          "kind": {
+            "const": "cleaned",
+            "title": "Kind",
+            "type": "string"
+          },
           "slug": {
             "pattern": "^[A-Za-z0-9_-]{10,32}$",
             "title": "Slug",
@@ -1082,9 +1093,41 @@
         },
         "required": [
           "slug",
-          "url"
+          "url",
+          "kind"
         ],
         "title": "ShareCreated",
+        "type": "object"
+      },
+      "ShareLink": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "const": "cleaned",
+            "title": "Kind",
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[A-Za-z0-9_-]{10,32}$",
+            "title": "Slug",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "url",
+          "kind",
+          "created_at"
+        ],
+        "title": "ShareLink",
         "type": "object"
       },
       "SharePublic": {
@@ -2379,6 +2422,56 @@
       }
     },
     "/videos/{video_id}/shares": {
+      "get": {
+        "operationId": "list_shares_videos__video_id__shares_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "video_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Video Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShareLink"
+                  },
+                  "title": "Response List Shares Videos  Video Id  Shares Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Shares",
+        "tags": [
+          "shares"
+        ]
+      },
       "post": {
         "operationId": "create_share_videos__video_id__shares_post",
         "parameters": [
@@ -2404,6 +2497,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareCreated"
+                }
+              }
+            },
+            "description": "OK"
+          },
           "201": {
             "content": {
               "application/json": {

@@ -218,7 +218,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Shares */
+        get: operations["list_shares_videos__video_id__shares_get"];
         put?: never;
         /** Create Share */
         post: operations["create_share_videos__video_id__shares_post"];
@@ -691,6 +692,12 @@ export interface components {
             /** Expires At */
             expires_at?: string | null;
             /**
+             * Kind
+             * @default cleaned
+             * @constant
+             */
+            kind: "cleaned";
+            /**
              * Visibility
              * @default link
              * @enum {string}
@@ -699,6 +706,28 @@ export interface components {
         };
         /** ShareCreated */
         ShareCreated: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "cleaned";
+            /** Slug */
+            slug: string;
+            /** Url */
+            url: string;
+        };
+        /** ShareLink */
+        ShareLink: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "cleaned";
             /** Slug */
             slug: string;
             /** Url */
@@ -1366,6 +1395,37 @@ export interface operations {
             };
         };
     };
+    list_shares_videos__video_id__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                video_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareLink"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_share_videos__video_id__shares_post: {
         parameters: {
             query?: never;
@@ -1381,6 +1441,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareCreated"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

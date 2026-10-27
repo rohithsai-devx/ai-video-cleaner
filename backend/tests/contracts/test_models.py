@@ -151,6 +151,7 @@ def test_run_create_defaults_every_fix_option_to_true() -> None:
 
 def test_share_create_defaults_to_link() -> None:
     assert ShareCreate().visibility == "link"
+    assert ShareCreate().kind == "cleaned"
 
 
 def test_page_is_generic_over_items() -> None:
