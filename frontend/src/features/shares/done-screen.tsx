@@ -65,6 +65,7 @@ export function DoneScreen({
       ? `Narrated by the AI voice (${voices.data?.voices.find((voice) => voice.id === run.data?.voice_id)?.label ?? "AI voice"}).`
       : "Narrated by your voice.";
   const voiceMeta = run.data?.voice === "ai" ? "AI voice" : "your voice";
+  const cleanedBadge = run.data?.voice === "ai" ? "Cleaned · AI voice" : "Cleaned · your voice";
   const shorter = formatShorter(originalDuration, cleanedDuration).replace(/ shorter$/, "");
   const cleanedLink = shares.data?.find((share) => share.kind === "cleaned");
   const rawLink = shares.data?.find((share) => share.kind === "raw");
@@ -130,9 +131,7 @@ export function DoneScreen({
               mode="file"
               segments={version === "raw" ? segments : []}
               chapters={selectedChapters}
-              badge={
-                version === "cleaned" ? "Cleaned · AI voice" : "Original recording · your voice"
-              }
+              badge={version === "cleaned" ? cleanedBadge : "Original recording · your voice"}
               onTime={onTime}
               seekTo={pendingSeek}
             />
