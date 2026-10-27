@@ -183,9 +183,10 @@ async def test_approve_marks_video_rendering_and_emits_status(
         run = await lifecycle.load(conn, run_id)
         assert run is not None
         events = await review.approve(conn, run)
-    assert events == [("run.status", RunStatusEvent(status="approved", stage=None))]
+    assert events == [("run.status", RunStatusEvent(status="approved", stage="approved"))]
     assert (await api.get(f"/videos/{video_id}", headers=h)).json()["status"] == "rendering"
-    assert (await api.get(f"/runs/{run_id}", headers=h)).json()["status"] == "approved"
+    body = (await api.get(f"/runs/{run_id}", headers=h)).json()
+    assert body["status"] == "approved" and body["stage"] == "approved"
 
 
 async def test_save_on_a_stale_base_version_is_a_version_conflict(

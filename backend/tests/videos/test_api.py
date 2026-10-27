@@ -178,7 +178,7 @@ async def test_proposal_edit_and_approve(
     assert (await api.get(f"/runs/{run_id}", headers=h)).json()["status"] == "approved"
     assert (await api.post(f"/runs/{run_id}/approve", headers=h)).status_code == 409
     assert (await api.put(f"/runs/{run_id}/proposal", json=update, headers=h)).status_code == 409
-    assert published[-1][1:] == ("run.status", RunStatusEvent(status="approved"))
+    assert published[-1][1:] == ("run.status", RunStatusEvent(status="approved", stage="approved"))
 
 
 async def test_share_and_public_page(api: httpx.AsyncClient, storage: FakeStorage) -> None:

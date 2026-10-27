@@ -264,4 +264,4 @@ async def approve(conn: Conn, run: RunRef, base_version: int | None = None) -> l
     await conn.execute(
         "update proposals set approved_by = app.uid(), approved_at = now() where id = %s", (pid,)
     )
-    return await advance(conn, run, "approved")
+    return await advance(conn, run, "approved", stage="approved")
