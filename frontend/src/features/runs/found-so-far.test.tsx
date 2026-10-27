@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { components } from "@/api/generated/schema";
-import { FoundSoFar } from "./found-so-far";
+import { FoundSoFar, readySummary } from "./found-so-far";
 
 type Progress = components["schemas"]["RunProgressEvent"];
 type ProposalView = components["schemas"]["ProposalView"];
@@ -66,5 +66,24 @@ describe("FoundSoFar", () => {
     expectTile("slow loads", 1);
     expect(screen.getByText("Billing page")).toBeTruthy();
     expect(screen.queryByText("99")).toBeNull();
+  });
+});
+
+describe("readySummary", () => {
+  it("counts all proposal changes and only open spots as needing the viewer", () => {
+    const proposal = {
+      changes: Array.from({ length: 15 }).map(() => ({ kind: "cut" as const })),
+      spots: [{ chosen_fix_id: null }, { chosen_fix_id: "fix-1" }, { chosen_fix_id: undefined }],
+    };
+
+    expect(readySummary(proposal)).toBe(
+      "18 changes ready. 15 are applied already. 2 need your call.",
+    );
+  });
+
+  it("uses the all-applied message when there are no spots", () => {
+    expect(readySummary({ changes: [{ kind: "cut" }], spots: [] })).toBe(
+      "1 changes ready. All are applied already.",
+    );
   });
 });

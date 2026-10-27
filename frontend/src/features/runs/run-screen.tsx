@@ -11,7 +11,7 @@ import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { Skeleton } from "@/ui/skeleton";
 import { Stepper } from "@/ui/stepper";
-import { FoundSoFar } from "./found-so-far";
+import { FoundSoFar, readySummary } from "./found-so-far";
 import { buildSteps, isTerminal, runChoicesLabel, runHeader } from "./run-progress";
 import { useRunEvents } from "./use-run-events";
 
@@ -143,7 +143,7 @@ export function RunScreen({ id }: { id: string }) {
                     </Link>
                   }
                 >
-                  Ready for you.
+                  {proposal.data ? readySummary(proposal.data) : "Ready for you."}
                 </Banner>
               ) : null}
 

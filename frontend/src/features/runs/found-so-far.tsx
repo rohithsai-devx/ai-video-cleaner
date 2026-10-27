@@ -45,6 +45,17 @@ function chapterTime(seconds: number): string {
   return `${minutes}:${String(wholeSeconds % 60).padStart(2, "0")}`;
 }
 
+export function readySummary(proposal: Pick<ProposalSummary, "changes" | "spots">): string {
+  const changes = proposal.changes.length;
+  const openSpots = proposal.spots.filter(
+    (spot) => spot.chosen_fix_id === null || spot.chosen_fix_id === undefined,
+  ).length;
+  if (proposal.spots.length === 0) {
+    return `${changes} changes ready. All are applied already.`;
+  }
+  return `${changes + proposal.spots.length} changes ready. ${changes} are applied already. ${openSpots} need your call.`;
+}
+
 export function FoundSoFar({
   progress,
   proposal,
