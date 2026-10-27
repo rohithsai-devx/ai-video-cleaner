@@ -49,10 +49,11 @@ function renderScreen(
     playbackUrl?: string | null;
     originalUrl?: string | null;
   }) => React.ReactNode,
+  forceClean = false,
 ) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <VideoScreen id="v1" renderShare={renderShare} />
+      <VideoScreen id="v1" renderShare={renderShare} forceClean={forceClean} />
     </QueryClientProvider>,
   );
 }
@@ -103,6 +104,19 @@ describe("VideoScreen start run", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clean this video" }));
     expect(mock.mutate.mock.calls[0][0].body.mode).toBe("auto");
+  });
+
+  it("shows the clean panel for a ready video when forced", () => {
+    mock.video.status = "ready";
+
+    const defaultView = renderScreen();
+    expect(screen.queryByRole("heading", { name: "Clean this video" })).not.toBeInTheDocument();
+    defaultView.unmount();
+
+    renderScreen(undefined, true);
+
+    expect(screen.getByRole("heading", { name: "Clean this video" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clean this video" })).toBeEnabled();
   });
 
   it("sends unchecked fix options with the run request", () => {

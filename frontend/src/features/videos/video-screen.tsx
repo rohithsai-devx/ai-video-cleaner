@@ -82,7 +82,15 @@ function estimateLine(
   return `About ${estimateMinutes} ${estimateMinutes === 1 ? "minute" : "minutes"} for a ${recordingMinutes}-minute recording.`;
 }
 
-export function VideoScreen({ id, renderShare }: { id: string; renderShare?: ShareSlot }) {
+export function VideoScreen({
+  id,
+  renderShare,
+  forceClean = false,
+}: {
+  id: string;
+  renderShare?: ShareSlot;
+  forceClean?: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("review");
   const [voice, setVoice] = useState<Voice>("original");
@@ -239,7 +247,7 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
           )}
         </section>
 
-        {v?.status === "uploaded" ? (
+        {v && (v.status === "uploaded" || forceClean) ? (
           <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-6 rounded-3xl border border-line bg-surface p-7">
             <div className="flex flex-col gap-1.5">
               <h2 className="m-0 text-[28px] font-semibold">Clean this video</h2>
