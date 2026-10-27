@@ -26,8 +26,8 @@ test("a link share opens signed out with the title and a video", async ({ page, 
     .toBe("done");
 
   await page.goto(`/videos/${id}`);
-  await page.getByRole("button", { name: "Share link" }).click();
-  const url = await page.getByLabel("Link", { exact: true }).inputValue();
+  await page.getByRole("button", { name: "Create link" }).click();
+  const url = await page.getByLabel("Cleaned video link", { exact: true }).inputValue();
   expect(url).toContain("/s/");
 
   const anon = await browser.newContext({ baseURL: "http://localhost:3000" });

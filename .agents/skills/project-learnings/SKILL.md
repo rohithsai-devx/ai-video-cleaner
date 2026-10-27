@@ -90,3 +90,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** a local database can retain pre-D1 outbox rows whose payload contains only `run_id`.
 - **Fix:** treat a missing payload attempt as attempt 1; new enqueues still always include the attempt.
 - **Takeaway:** when adding required fields to durable queued payloads, preserve a safe default for already stored rows.
+
+### Share creation still requires explicit link visibility (2026-10-27)
+- **Symptom:** TypeScript rejects a cleaned share request that only sends `kind` after the UI options are removed.
+- **Root cause:** the generated `ShareCreate` request keeps `visibility` required even though the backend defaults it.
+- **Fix:** send `visibility: "link"` and `expires_at: null` as fixed values when creating a cleaned link.
+- **Takeaway:** keep the settled visibility and expiry values explicit when removing their controls from the share UI.
