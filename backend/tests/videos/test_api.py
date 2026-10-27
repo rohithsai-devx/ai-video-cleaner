@@ -205,24 +205,9 @@ async def test_share_and_public_page(api: httpx.AsyncClient, storage: FakeStorag
     assert v["playback_url"] == f"http://fake-play/{key}"
 
 
-async def test_glossary_roundtrip(api: httpx.AsyncClient, storage: FakeStorage) -> None:
-    h = await _user(api)
-    ws = (await api.post("/videos", json={}, headers=h)).json()["video_id"]
-    ws = (await api.get(f"/videos/{ws}", headers=h)).json()["workspace_id"]
-    terms = [
-        {"term": "Kubernetes", "pronunciation": "koo-ber-net-eez"},
-        {"term": "SaaS", "pronunciation": None},
-    ]
-    r = await api.put(f"/workspaces/{ws}/glossary", json=terms, headers=h)
-    assert r.status_code == 200, r.text
-    r = await api.get(f"/workspaces/{ws}/glossary", headers=h)
-    assert sorted(r.json(), key=lambda t: t["term"]) == sorted(terms, key=lambda t: t["term"])
-    r = await api.put(f"/workspaces/{ws}/glossary", json=terms[:1], headers=h)
-    assert (await api.get(f"/workspaces/{ws}/glossary", headers=h)).json() == terms[:1]
-
-    other = await _user(api)
-    assert (await api.get(f"/workspaces/{ws}/glossary", headers=other)).status_code == 404
-    assert (await api.put(f"/workspaces/{ws}/glossary", json=[], headers=other)).status_code == 404
+async def test_glossary_endpoints_are_not_in_the_api_schema(api: httpx.AsyncClient) -> None:
+    paths = (await api.get("/openapi.json")).json()["paths"]
+    assert "/workspaces/{workspace_id}/glossary" not in paths
 
 
 async def test_other_tenant_gets_404(api: httpx.AsyncClient, storage: FakeStorage) -> None:

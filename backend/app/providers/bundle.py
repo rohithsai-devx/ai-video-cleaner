@@ -117,10 +117,7 @@ class Providers:
         call: Call,
         text: str,
         voice_id: str,
-        pronunciations: dict[str, str],
     ) -> Clip:
-        # ponytail: pronunciations are accepted and unused until ElevenLabs.
-        del pronunciations
         voice = voice_id or self._settings.openai_speech_voice
         model = self._settings.openai_speech_model
         started = time.perf_counter()

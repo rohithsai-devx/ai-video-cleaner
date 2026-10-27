@@ -630,13 +630,11 @@ class _Clips:
         self.clips = clips
         self.texts: list[str] = []
         self.voice_id: str | None = None
-        self.pronunciations: dict[str, str] | None = None
         self.stage: str | None = None
 
-    def synthesize(self, call: Any, text: str, voice_id: str, pronunciations: dict[str, str]) -> Clip:
+    def synthesize(self, call: Any, text: str, voice_id: str) -> Clip:
         self.texts.append(text)
         self.voice_id = voice_id
-        self.pronunciations = pronunciations
         self.stage = call.stage
         wav, duration = self.clips[text]
         return Clip(audio=wav, duration_s=duration)
@@ -649,8 +647,8 @@ class _Fails:
         self.then = then
         self.calls = 0
 
-    def synthesize(self, call: Any, text: str, voice_id: str, pronunciations: dict[str, str]) -> Clip:
-        del call, text, voice_id, pronunciations
+    def synthesize(self, call: Any, text: str, voice_id: str) -> Clip:
+        del call, text, voice_id
         self.calls += 1
         if self.calls <= self.times:
             raise ProviderError("busy", retryable=self.retryable)
@@ -677,7 +675,6 @@ async def test_ai_render_writes_each_block_and_fits_its_duration(monkeypatch: py
     assert speech.texts == ["alpha", "beta"]
     assert speech.stage == "voice"
     assert speech.voice_id == ""
-    assert speech.pronunciations == {}
     assert storage.objects[b1] == b"wav-alpha"
     assert storage.objects[b2] == b"wav-beta"
     assert storage.uploads.index(b1) < storage.uploads.index(uri)

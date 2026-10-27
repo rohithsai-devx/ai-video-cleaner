@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.auth.router import router as auth_router
-from app.glossary.router import router as glossary_router
 from app.runs.router import router as runs_router
 from app.shared import db, events
 from app.shared.config import get_settings
@@ -61,7 +60,7 @@ def create_app(*, manage_pool: bool = True) -> FastAPI:
             await db.close_pool()
 
     app = FastAPI(title="AI Video Cleaner API", version="0.1.0", lifespan=lifespan)
-    for r in (auth_router, videos_router, runs_router, shares_router, glossary_router):
+    for r in (auth_router, videos_router, runs_router, shares_router):
         app.include_router(r)
     _sse_only_openapi(app)
     return app

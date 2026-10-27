@@ -15,7 +15,6 @@ from pydantic import ValidationError
 from app.auth.schemas import SignUp
 from app.contracts import enums
 from app.contracts.pipeline import AgentState, Proposal, SegContext, TranscriptContext, merge_by
-from app.glossary.schemas import GlossaryTerm
 from app.runs.schemas import RunCreate
 from app.shares.schemas import ShareCreate
 from app.videos.schemas import Page, Video
@@ -149,9 +148,22 @@ def test_share_create_defaults_to_link() -> None:
 
 
 def test_page_is_generic_over_items() -> None:
-    page = Page[GlossaryTerm].model_validate({"items": [{"term": "PDF", "pronunciation": None}]})
+    page = Page[Video].model_validate(
+        {
+            "items": [
+                {
+                    "id": "video-1",
+                    "workspace_id": "workspace-1",
+                    "title": "Quarterly export",
+                    "status": "uploaded",
+                    "created_at": "2026-10-18T09:00:00Z",
+                    "updated_at": "2026-10-18T09:05:00Z",
+                }
+            ]
+        }
+    )
     assert page.next_cursor is None
-    assert page.items[0].term == "PDF"
+    assert page.items[0].title == "Quarterly export"
 
 
 def test_video_round_trip_with_run_summary() -> None:

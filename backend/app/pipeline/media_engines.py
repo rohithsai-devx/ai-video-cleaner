@@ -22,7 +22,7 @@ from app.shared.storage import GcsStorage
 
 @runtime_checkable
 class _CanSpeak(Protocol):
-    def synthesize(self, call: Call, text: str, voice_id: str, pronunciations: dict[str, str]) -> Clip: ...
+    def synthesize(self, call: Call, text: str, voice_id: str) -> Clip: ...
 
 
 def _propose(run: RunRef, pre: PreprocessResult, bundle: Bundle) -> Draft:
@@ -73,7 +73,7 @@ class MediaEngines:
 
         def speak(text: str) -> tuple[bytes, float]:
             # ponytail: "" uses the configured speech voice; RunRef has no voice_id.
-            clip = bundle.synthesize(make_call(str(run.workspace_id), str(run.id), "voice"), text, "", {})
+            clip = bundle.synthesize(make_call(str(run.workspace_id), str(run.id), "voice"), text, "")
             return clip.audio, clip.duration_s
 
         return speak

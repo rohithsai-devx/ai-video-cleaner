@@ -244,27 +244,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workspaces/{workspace_id}/glossary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Glossary */
-        get: operations["get_glossary_workspaces__workspace_id__glossary_get"];
-        /**
-         * Put Glossary
-         * @description Replace the whole glossary. Owners and admins only (enforced by RLS too).
-         */
-        put: operations["put_glossary_workspaces__workspace_id__glossary_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -344,13 +323,6 @@ export interface components {
         EditPlan: {
             /** Entries */
             entries: components["schemas"]["EDLEntry"][];
-        };
-        /** GlossaryTerm */
-        GlossaryTerm: {
-            /** Pronunciation */
-            pronunciation?: string | null;
-            /** Term */
-            term: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1324,72 +1296,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Video"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_glossary_workspaces__workspace_id__glossary_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GlossaryTerm"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_glossary_workspaces__workspace_id__glossary_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspace_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GlossaryTerm"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GlossaryTerm"][];
                 };
             };
             /** @description Validation Error */

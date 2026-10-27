@@ -11,7 +11,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 APP = BACKEND / "app"
 TESTS = BACKEND / "tests"
 
-DOMAINS = {"auth", "videos", "runs", "shares", "glossary", "search"}
+DOMAINS = {"auth", "videos", "runs", "shares", "search"}
 # pipeline: plain-code stages; agent: the LangGraph package; providers: the provider factory
 TOP_LEVEL = DOMAINS | {"shared", "contracts", "pipeline", "agent", "providers", "main.py", "__init__.py"}
 # names that hide what a file holds, or the pre-restructure layer folders

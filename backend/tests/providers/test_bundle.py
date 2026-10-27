@@ -213,7 +213,7 @@ def test_empty_gemma_url_does_not_call_http() -> None:
 def test_synthesize_duration_comes_from_the_wav() -> None:
     audio = _wav(RATE, FRAMES)
     transport, seen = _transport(200, audio)
-    clip = build(_settings(), transport=transport).synthesize(_call(), "Hello", "", {"Stepwise": "step wise"})
+    clip = build(_settings(), transport=transport).synthesize(_call(), "Hello", "")
     assert clip.audio == audio
     assert clip.duration_s == FRAMES / RATE
     body = json.loads(seen[0].content)
@@ -221,7 +221,6 @@ def test_synthesize_duration_comes_from_the_wav() -> None:
     assert body["model"] == "gpt-4o-mini-tts-2025-12-15"
     assert body["response_format"] == "wav"
     assert body["voice"] == "coral"
-    assert "pronunciations" not in body
 
 
 def test_synthesize_measures_the_payload_not_the_streamed_header() -> None:
@@ -232,7 +231,7 @@ def test_synthesize_measures_the_payload_not_the_streamed_header() -> None:
     data_size = bytes(audio).find(b"data") + 4
     audio[data_size : data_size + 4] = b"\xff\xff\xff\xff"
     transport, _seen = _transport(200, bytes(audio))
-    clip = build(_settings(), transport=transport).synthesize(_call(), "Hello", "", {})
+    clip = build(_settings(), transport=transport).synthesize(_call(), "Hello", "")
     assert clip.duration_s == FRAMES / RATE
 
 
