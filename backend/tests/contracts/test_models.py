@@ -33,6 +33,7 @@ PAIRS: dict[str, Any] = {
     "run_status": enums.RunStatus,
     "proposal_src": enums.ProposalSource,
     "share_vis": enums.ShareVisibility,
+    "share_kind": enums.ShareKind,
     "edit_kind": enums.EditKind,
 }
 

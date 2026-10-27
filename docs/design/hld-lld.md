@@ -254,6 +254,7 @@ create type run_status    as enum ('queued','preprocessing','agent_running','awa
                                    'approved','postprocessing','done','failed','cancelled');
 create type proposal_src  as enum ('agent','user');
 create type share_vis     as enum ('private','workspace','link');
+create type share_kind    as enum ('cleaned','raw');
 create type edit_kind     as enum ('block_text','cut_toggle','speed','must_keep');
 
 create table users (
@@ -397,6 +398,7 @@ create table shares (
   workspace_id uuid not null,
   video_id     uuid not null,
   slug         text unique not null check (slug ~ '^[A-Za-z0-9_-]{10,32}$'),
+  kind         share_kind not null default 'cleaned',
   visibility   share_vis not null default 'link',
   expires_at   timestamptz,
   created_by   uuid not null references users,
@@ -538,16 +540,19 @@ begin
   return ws;
 end $$;
 
--- public share page: anonymous viewer; returns only playback fields and counts the view atomically
+-- public share page: raw links work before render; cleaned links require a ready video
 create function app.resolve_share(p_slug text)
-  returns table (video_id uuid, title text, output_uri text, poster_uri text)
+  returns table (video_id uuid, title text, uri text, poster_uri text, kind share_kind)
   language sql volatile security definer set search_path = pg_catalog, public, pg_temp as $$
   update public.shares s set view_count = s.view_count + 1
   from public.videos v
   where s.slug = p_slug and s.visibility = 'link'
     and (s.expires_at is null or s.expires_at > now())
-    and v.id = s.video_id and v.status = 'ready'
-  returning v.id, v.title, v.output_uri, v.poster_uri $$;
+    and v.id = s.video_id
+    and ((s.kind = 'cleaned' and v.status = 'ready') or (s.kind = 'raw' and v.raw_uri is not null))
+  returning v.id, v.title,
+    case when s.kind = 'raw' then v.raw_uri else v.output_uri end,
+    v.poster_uri, s.kind $$;
 
 alter function app.my_workspaces()              owner to app_definer;
 alter function app.has_role(uuid, member_role[]) owner to app_definer;
@@ -674,7 +679,9 @@ create policy d_s    on shares for select to app_definer
 create policy d_s_u  on shares for update to app_definer
   using (visibility = 'link' and (expires_at is null or expires_at > now())) with check (true);
 create policy d_v    on videos for select to app_definer
-  using (status = 'ready' and id in (select video_id from shares));            -- shares filtered by d_s
+  using (
+    (status = 'ready' and id in (select video_id from shares where kind = 'cleaned'))
+    or (raw_uri is not null and id in (select video_id from shares where kind = 'raw')));
 ```
 
 ### LangGraph checkpoint tables
@@ -907,7 +914,8 @@ The FastAPI service never handles media bytes. Uploads and playback go directly 
 | `PUT` | `/runs/{id}/proposal` | User edits, with `base_version` (the version the user edited; `409 version_conflict` if someone saved since). Only block text, cut/speed/freeze and `must_keep` may change (otherwise `422`). Re-runs the EDL check against the stored segments and saves a new version + `review_edits` | `ProposalView` with fresh `checks` |
 | `POST` | `/runs/{id}/approve` | Optional body `{base_version}`: approves the latest saved version, refused with `409 version_conflict` if it is not the one the user saw. Compare-and-set `awaiting_review` to `approved`; enqueues postprocessing | `202` |
 | `POST` | `/runs/{id}/cancel` | Marks the run `cancelled`; workers stop at the next stage boundary | `202` |
-| `POST` | `/videos/{id}/shares` | Body `{visibility, expires_at?}`; `url` is `{FRONTEND_BASE_URL}/s/{slug}` | `{slug, url}` |
+| `POST` | `/videos/{id}/shares` | Body `{kind?, visibility, expires_at?}`; returns a live link of the same kind when one exists (`200`), otherwise creates it (`201`) | `{slug, url, kind}` |
+| `GET` | `/videos/{id}/shares` | Link-visibility shares, newest first | `ShareLink[]` |
 | `GET` | `/s/{slug}` | Public share page data (signed playback URL, title, poster) | `share` |
 | `GET` | `/me` | Current user and their workspaces with role | `{user, workspaces[]}` |
 

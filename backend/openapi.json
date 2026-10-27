@@ -1055,8 +1055,11 @@
             "title": "Expires At"
           },
           "kind": {
-            "const": "cleaned",
             "default": "cleaned",
+            "enum": [
+              "cleaned",
+              "raw"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -1077,7 +1080,10 @@
       "ShareCreated": {
         "properties": {
           "kind": {
-            "const": "cleaned",
+            "enum": [
+              "cleaned",
+              "raw"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -1107,7 +1113,10 @@
             "type": "string"
           },
           "kind": {
-            "const": "cleaned",
+            "enum": [
+              "cleaned",
+              "raw"
+            ],
             "title": "Kind",
             "type": "string"
           },

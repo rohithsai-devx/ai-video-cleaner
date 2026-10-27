@@ -25,6 +25,7 @@ RunStatus = Literal[
 ]
 ProposalSource = Literal["agent", "user"]
 ShareVisibility = Literal["private", "workspace", "link"]
+ShareKind = Literal["cleaned", "raw"]
 EditKind = Literal["block_text", "cut_toggle", "speed", "must_keep"]
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "ProposalSource",
     "RunMode",
     "RunStatus",
+    "ShareKind",
     "ShareVisibility",
     "VideoStatus",
     "VoiceMode",

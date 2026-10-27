@@ -127,6 +127,19 @@ select case when count(*) = 1 then 'PASS T12a live link resolves' else 'FAIL T12
 select case when count(*) = 0 then 'PASS T12b expired link does not resolve' else 'FAIL T12b' end from app.resolve_share('oldslug_0001');
 rollback;
 
+-- T12c raw links resolve before render; cleaned links still require a ready video
+begin;
+update videos set status = 'uploaded' where id = '20000000-0000-0000-0000-000000000001';
+insert into shares (workspace_id, video_id, slug, created_by, kind) values
+  ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','rawslug_00001','00000000-0000-0000-0000-00000000000a','raw'),
+  ('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','cleanedslug_01','00000000-0000-0000-0000-00000000000a','cleaned');
+set local role app_api;
+select case when count(*) = 1 then 'PASS T12c raw link resolves before ready' else 'FAIL T12c raw' end
+  from app.resolve_share('rawslug_00001');
+select case when count(*) = 0 then 'PASS T12c cleaned link waits for ready' else 'FAIL T12c cleaned' end
+  from app.resolve_share('cleanedslug_01');
+rollback;
+
 -- T13 create_workspace
 begin; set local role app_api; select set_config('app.user_id','00000000-0000-0000-0000-00000000000a',true);
 select app.create_workspace('W3') is not null as created;

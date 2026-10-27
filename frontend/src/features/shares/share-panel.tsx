@@ -32,7 +32,7 @@ export function SharePanel({
     setCopy("idle");
     create.mutate({
       params: { path: { video_id: videoId } },
-      body: { visibility, expires_at: expiryToIso(expiry) },
+      body: { kind: "cleaned", visibility, expires_at: expiryToIso(expiry) },
     });
   }
 

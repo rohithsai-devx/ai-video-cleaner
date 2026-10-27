@@ -694,9 +694,9 @@ export interface components {
             /**
              * Kind
              * @default cleaned
-             * @constant
+             * @enum {string}
              */
-            kind: "cleaned";
+            kind: "cleaned" | "raw";
             /**
              * Visibility
              * @default link
@@ -708,9 +708,9 @@ export interface components {
         ShareCreated: {
             /**
              * Kind
-             * @constant
+             * @enum {string}
              */
-            kind: "cleaned";
+            kind: "cleaned" | "raw";
             /** Slug */
             slug: string;
             /** Url */
@@ -725,9 +725,9 @@ export interface components {
             created_at: string;
             /**
              * Kind
-             * @constant
+             * @enum {string}
              */
-            kind: "cleaned";
+            kind: "cleaned" | "raw";
             /** Slug */
             slug: string;
             /** Url */
