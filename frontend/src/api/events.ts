@@ -5,10 +5,17 @@ type Schemas = components["schemas"];
 export type RunEvent =
   | { type: "run.status"; data: Schemas["RunStatusEvent"] }
   | { type: "run.proposal_ready"; data: Schemas["RunProposalReadyEvent"] }
+  | { type: "run.progress"; data: Schemas["RunProgressEvent"] }
   | { type: "run.done"; data: Schemas["RunDoneEvent"] }
   | { type: "run.failed"; data: Schemas["RunFailedEvent"] };
 
-const NAMES: RunEvent["type"][] = ["run.status", "run.proposal_ready", "run.done", "run.failed"];
+const NAMES: RunEvent["type"][] = [
+  "run.status",
+  "run.proposal_ready",
+  "run.progress",
+  "run.done",
+  "run.failed",
+];
 
 type Handlers = {
   onEvent: (event: RunEvent) => void;

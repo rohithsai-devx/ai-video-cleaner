@@ -11,18 +11,26 @@ import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { Skeleton } from "@/ui/skeleton";
 import { Stepper } from "@/ui/stepper";
+import { FoundSoFar } from "./found-so-far";
 import { buildSteps, isTerminal, runChoicesLabel, runHeader } from "./run-progress";
 import { useRunEvents } from "./use-run-events";
 
 export function RunScreen({ id }: { id: string }) {
   const router = useRouter();
-  const { run: query, live } = useRunEvents(id);
+  const { run: query, live, progress } = useRunEvents(id);
   const run = query.data;
+  const ready = run?.status === "awaiting_review";
   const video = $api.useQuery(
     "get",
     "/videos/{video_id}",
     { params: { path: { video_id: run?.video_id ?? "" } } },
     { enabled: Boolean(run) },
+  );
+  const proposal = $api.useQuery(
+    "get",
+    "/runs/{run_id}/proposal",
+    { params: { path: { run_id: id } } },
+    { enabled: ready },
   );
   const cancel = $api.useMutation("post", "/runs/{run_id}/cancel");
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -53,9 +61,11 @@ export function RunScreen({ id }: { id: string }) {
     if (run?.status === "done") router.replace(`/videos/${run.video_id}`);
   }, [run, router]);
 
-  const steps = run ? buildSteps(run) : [];
+  const chapters = ready
+    ? (proposal.data?.chapters ?? progress?.chapters ?? [])
+    : (progress?.chapters ?? []);
+  const steps = run ? buildSteps(run, chapters) : [];
   const header = run ? runHeader(run) : null;
-  const ready = run?.status === "awaiting_review";
   const failed = run?.status === "failed";
   const cancelled = run?.status === "cancelled";
   const canStop = Boolean(
@@ -224,6 +234,7 @@ export function RunScreen({ id }: { id: string }) {
             </>
           )}
         </section>
+        <FoundSoFar progress={progress} proposal={proposal.data} ready={ready} />
       </main>
     </div>
   );

@@ -39,6 +39,15 @@ describe("applyRunEvent", () => {
         .status,
     ).toBe("done");
   });
+
+  it("leaves progress events outside the cached run", () => {
+    expect(
+      applyRunEvent(run, {
+        type: "run.progress",
+        data: { pauses: 6, filler: 3, retakes: 3, slow_parts: 2 },
+      }),
+    ).toBe(run);
+  });
 });
 
 describe("isTerminal", () => {
@@ -82,6 +91,15 @@ describe("buildSteps", () => {
       },
       { label: "Getting it ready for you", detail: "Next", state: "next" },
     ]);
+  });
+
+  it("includes known chapters in the watching step detail", () => {
+    expect(
+      buildSteps({ ...run, status: "agent_running" }, [
+        { title: "Sign In", start: 0, end: 15 },
+        { title: "Create the Project", start: 15, end: 42 },
+      ])[1]?.detail,
+    ).toBe("Found 2 chapters: sign in, create the project.");
   });
 
   it("shows approved changes and render progress with the required details", () => {

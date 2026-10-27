@@ -3,6 +3,7 @@ import type { Step } from "@/ui/stepper";
 import type { RunEvent } from "@/api/events";
 
 type Run = components["schemas"]["Run"];
+type Chapter = components["schemas"]["Chapter"];
 
 export function isTerminal(status: Run["status"]): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
@@ -15,6 +16,8 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
       return { ...run, status: event.data.status, stage: event.data.stage ?? null };
     case "run.proposal_ready":
       return { ...run, flags: event.data.flags };
+    case "run.progress":
+      return run;
     case "run.failed":
       return { ...run, status: "failed", error: event.data };
     case "run.done":
@@ -73,8 +76,14 @@ function stateFor(run: Run, index: number): Step["state"] {
   }
 }
 
-function detailFor(index: number, state: Step["state"]): string {
-  if (state === "done") return DONE_DETAILS[index];
+function detailFor(index: number, state: Step["state"], chapters: Chapter[]): string {
+  if (state === "done") {
+    if (index === 1 && chapters.length > 0) {
+      const titles = chapters.map((chapter) => chapter.title.toLowerCase()).join(", ");
+      return `Found ${chapters.length} chapters: ${titles}.`;
+    }
+    return DONE_DETAILS[index];
+  }
   if (state === "failed") return "This step stopped. Nothing you did caused it.";
   if (state === "next") return "Next";
   if (index === 2) return "Choosing what to remove, speed up or keep.";
@@ -83,10 +92,10 @@ function detailFor(index: number, state: Step["state"]): string {
 }
 
 /** Maps API states onto the four plain-language steps shown to the viewer. */
-export function buildSteps(run: Run): Step[] {
+export function buildSteps(run: Run, chapters: Chapter[] = []): Step[] {
   return LABELS.map((label, index) => {
     const state = stateFor(run, index);
-    return { label, detail: detailFor(index, state), state };
+    return { label, detail: detailFor(index, state, chapters), state };
   });
 }
 

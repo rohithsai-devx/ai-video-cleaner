@@ -8,16 +8,21 @@ import type { components } from "@/api/generated/schema";
 import { applyRunEvent, isTerminal } from "./run-progress";
 
 type Run = components["schemas"]["Run"];
+type Progress = components["schemas"]["RunProgressEvent"];
 
 /** Seeds from GET /runs/{id}, then folds SSE events into that same query's cache. */
 export function useRunEvents(runId: string) {
   const queryClient = useQueryClient();
   const run = $api.useQuery("get", "/runs/{run_id}", { params: { path: { run_id: runId } } });
+  const [latestProgress, setLatestProgress] = useState<{ runId: string; data: Progress } | null>(
+    null,
+  );
   // Bumped to reopen a stream the browser gave up on; capped so an expired session cannot loop forever.
   const [reopen, setReopen] = useState(0);
 
   const status = run.data?.status;
   const live = status !== undefined && !isTerminal(status);
+  const progress = latestProgress?.runId === runId ? latestProgress.data : null;
 
   useEffect(() => {
     if (!live) return;
@@ -27,6 +32,7 @@ export function useRunEvents(runId: string) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const close = openRunEvents(runId, {
       onEvent: (event) => {
+        if (event.type === "run.progress") setLatestProgress({ runId, data: event.data });
         queryClient.setQueryData(queryKey, (old: Run | undefined) =>
           old ? applyRunEvent(old, event) : old,
         );
@@ -45,5 +51,5 @@ export function useRunEvents(runId: string) {
     };
   }, [live, runId, queryClient, reopen]);
 
-  return { run, live };
+  return { run, live, progress };
 }

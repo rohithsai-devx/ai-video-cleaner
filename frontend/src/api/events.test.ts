@@ -43,9 +43,26 @@ describe("openRunEvents", () => {
     expect(es.url).toBe("/api/runs/r1/events");
     es.emit("run.status", { status: "queued", stage: null });
     es.emit("run.proposal_ready", { version: 1, flags: [], auto_approved: false });
+    es.emit("run.progress", {
+      pauses: 6,
+      filler: 3,
+      retakes: 3,
+      slow_parts: 2,
+      chapters: [{ title: "Sign in", start: 0, end: 12 }],
+    });
     expect(events).toEqual([
       { type: "run.status", data: { status: "queued", stage: null } },
       { type: "run.proposal_ready", data: { version: 1, flags: [], auto_approved: false } },
+      {
+        type: "run.progress",
+        data: {
+          pauses: 6,
+          filler: 3,
+          retakes: 3,
+          slow_parts: 2,
+          chapters: [{ title: "Sign in", start: 0, end: 12 }],
+        },
+      },
     ]);
     expect(es.closed).toBe(false);
   });
