@@ -1,6 +1,6 @@
 """Tests for the shared Pydantic package in app.contracts.
 
-Literals are checked against the enum labels in docs/design/sql/01_schema.sql, so the
+Literals are checked against the enum labels in every ordered schema migration, so the
 Python names cannot drift from the database.
 """
 
@@ -21,7 +21,7 @@ from app.shares.schemas import ShareCreate
 from app.videos.schemas import Page, Video
 
 REPO = Path(__file__).resolve().parents[3]
-SCHEMA_SQL = REPO / "docs" / "design" / "sql" / "01_schema.sql"
+SQL_DIR = REPO / "docs" / "design" / "sql"
 MODELS_DIR = Path(__file__).resolve().parents[2] / "app" / "contracts"
 FIXTURE = Path(__file__).resolve().parents[2] / "app" / "pipeline" / "fixtures" / "proposal.json"
 
@@ -38,11 +38,26 @@ PAIRS: dict[str, Any] = {
 }
 
 _ENUM_RE = re.compile(r"create\s+type\s+(\w+)\s+as\s+enum\s*\((.*?)\)\s*;", re.IGNORECASE | re.DOTALL)
+_ADD_ENUM_VALUE_RE = re.compile(r"alter\s+type\s+(\w+)\s+add\s+value\s+'([^']+)'", re.IGNORECASE)
+
+
+def parse_sql_enums(text: str) -> dict[str, tuple[str, ...]]:
+    """Parse enum declarations and later labels in SQL statement order."""
+    statements = [(m.start(), "create", m) for m in _ENUM_RE.finditer(text)] + [
+        (m.start(), "add", m) for m in _ADD_ENUM_VALUE_RE.finditer(text)
+    ]
+    enums: dict[str, list[str]] = {}
+    for _, kind, match in sorted(statements, key=lambda item: item[0]):
+        if kind == "create":
+            enums[match.group(1)] = re.findall(r"'([^']+)'", match.group(2))
+        elif match.group(1) in enums:
+            enums[match.group(1)].append(match.group(2))
+    return {name: tuple(labels) for name, labels in enums.items()}
 
 
 def sql_enums() -> dict[str, tuple[str, ...]]:
-    text = SCHEMA_SQL.read_text()
-    return {m.group(1): tuple(re.findall(r"'([^']+)'", m.group(2))) for m in _ENUM_RE.finditer(text)}
+    files = sorted(path for path in SQL_DIR.glob("[0-9][0-9]_*.sql") if not path.name.endswith("_tests.sql"))
+    return parse_sql_enums("\n".join(path.read_text() for path in files))
 
 
 def seg(seg_id: str, label: str) -> SegContext:
@@ -103,6 +118,16 @@ def test_literal_matches_sql_enum(sql_name: str) -> None:
 
 def test_every_sql_enum_is_covered() -> None:
     assert set(PAIRS) == set(sql_enums())
+
+
+def test_sql_enum_parser_adds_values_and_ignores_owner_changes() -> None:
+    sql = """
+    create type share_kind as enum ('cleaned');
+    alter type share_kind add value 'raw';
+    alter type share_kind owner to app_api;
+    """
+
+    assert parse_sql_enums(sql) == {"share_kind": ("cleaned", "raw")}
 
 
 def test_run_create_requires_voice_id_iff_ai() -> None:
