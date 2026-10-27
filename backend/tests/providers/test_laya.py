@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from app.providers import Call, CallLog, ProviderError, build, laya
 from app.providers.laya import CHECKPOINT, Decision, decide
@@ -15,8 +16,8 @@ from app.shared.config import Settings
 def _settings() -> Settings:
     return Settings(
         database_url_api="postgresql://app_api@localhost/avc",
-        jwt_secret="k" * 16,
-        openai_api_key="test-key",
+        jwt_secret=SecretStr("k" * 16),
+        openai_api_key=SecretStr("test-key"),
     )
 
 

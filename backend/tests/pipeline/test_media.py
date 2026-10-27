@@ -191,7 +191,7 @@ class _Seed(GcsStorage):
     def __init__(self) -> None:
         super().__init__(bucket="b", emulator_host="localhost:9")
 
-    async def download_to(self, uri: str, path: str | Path) -> None:
+    async def download_to(self, uri: str, path: str | PathLike[str]) -> None:
         del uri
         await asyncio.to_thread(_write_raw, fspath(path))
 
@@ -317,10 +317,10 @@ class _Disk(GcsStorage):
         self.uploads.append(uri)
         self._local(uri).write_bytes(Path(filename).read_bytes())
 
-    async def download_to(self, uri: str, path: str | Path) -> None:
+    async def download_to(self, uri: str, path: str | PathLike[str]) -> None:
         await asyncio.to_thread(self._copy_down, uri, fspath(path))
 
-    async def upload_file(self, uri: str, path: str | Path, content_type: str) -> None:
+    async def upload_file(self, uri: str, path: str | PathLike[str], content_type: str) -> None:
         del content_type
         await asyncio.to_thread(self._copy_up, uri, fspath(path))
 

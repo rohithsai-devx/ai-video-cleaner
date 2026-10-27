@@ -60,3 +60,9 @@ When you hit a non-obvious failure (bad data shape, 404-with-auth, migration col
 - **Root cause:** pytest and a local `uvicorn` with `FAKE_WORKER=true` share the `avc` database. The dev server's in-process worker picks up runs the tests enqueue and advances them, racing the factory's compare-and-set.
 - **Fix:** stop the dev API before `uv run pytest` (90/90 stable with it stopped). CI is unaffected because it runs no dev server.
 - **Takeaway:** never run the backend suite next to a live `FAKE_WORKER` API on the same database.
+
+### Fixture worker proposal exceeds its reported duration (2026-10-27)
+- **Symptom:** the full API e2e flow reached review but approval returned 422 for proposal spans after 12 seconds.
+- **Root cause:** `FixtureEngines.preprocess` reported a 12-second video while its canned proposal uses the 60-second demo timeline.
+- **Fix:** keep the fixture preprocess duration at 60 seconds and align the pipeline test expectation.
+- **Takeaway:** fixture media duration must cover the proposal's source timeline.

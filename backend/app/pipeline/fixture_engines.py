@@ -14,7 +14,7 @@ from app.runs.lifecycle import RunRef
 from app.shared.storage import GcsStorage
 
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "proposal.json"
-_DURATION_S = 12.0
+_DURATION_S = 60.0
 
 
 @lru_cache

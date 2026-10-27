@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from google.api_core.exceptions import Conflict
 
 from app.auth.router import router as auth_router
+from app.contracts.events import RunFailedEvent
 from app.pipeline import relay, stages
 from app.pipeline.fixture_engines import FixtureEngines
 from app.pipeline.relay import Task
@@ -301,7 +302,8 @@ async def test_preprocess_failure_after_status_commit_marks_the_run_failed(
     events = await stages.handle(task, engines, storage)
     assert engines.saw == "preprocessing"  # beat 1 committed before ffmpeg
     name, err = events[-1]
-    assert name == "run.failed" and err.stage == "pre-cpu" and err.retryable is True
+    assert name == "run.failed" and isinstance(err, RunFailedEvent)
+    assert err.stage == "pre-cpu" and err.retryable is True
     row = await _status(uid, run_id)
     assert row["status"] == "failed" and row["video_status"] == "failed"
 
@@ -324,8 +326,8 @@ async def test_preprocess_sees_committed_status_and_a_replay_is_a_no_op(
         )
         written = await cur.fetchone()
     assert written is not None
-    assert written["pre"]["duration"] == 12
-    assert float(written["duration_s"]) == 12.0
+    assert written["pre"]["duration"] == 60
+    assert float(written["duration_s"]) == 60.0
 
     assert await stages.handle(task, engines, storage) == []
     assert (await _status(uid, run_id))["status"] == "agent_running"
