@@ -25,6 +25,9 @@ export function Switch({
   const inputId = id ?? generatedId;
   const hintId = `${inputId}-hint`;
   const labelId = `${inputId}-label`;
+  const describedBy = [props["aria-describedby"], hintId]
+    .filter((id): id is string => Boolean(id))
+    .join(" ");
 
   return (
     <label
@@ -46,7 +49,7 @@ export function Switch({
           disabled={disabled}
           aria-checked={checked}
           aria-labelledby={labelId}
-          aria-describedby={hintId}
+          aria-describedby={describedBy}
           className="peer sr-only"
         />
         <span

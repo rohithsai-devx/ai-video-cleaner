@@ -49,4 +49,23 @@ describe("SegmentedControl", () => {
     expect(ai).toHaveFocus();
     expect(onChange).toHaveBeenCalledWith("ai");
   });
+
+  it("keeps a 36px small visual segment inside a 44px click target", () => {
+    render(
+      <SegmentedControl
+        name="voice"
+        legend="Voice"
+        options={options}
+        value="original"
+        onChange={() => {}}
+        size="sm"
+      />,
+    );
+
+    const radio = screen.getByRole("radio", { name: "Keep my voice" });
+    const clickTarget = radio.closest("label");
+
+    expect(clickTarget).toHaveClass("min-h-11");
+    expect(clickTarget?.querySelector("span")).toHaveClass("min-h-9");
+  });
 });

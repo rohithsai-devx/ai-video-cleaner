@@ -23,6 +23,7 @@ export function SegmentedControl({
 }: SegmentedControlProps) {
   const groupId = useId();
   const itemSize = size === "md" ? "min-h-11 px-3 text-sm" : "min-h-9 px-2.5 text-[13px]";
+  const containerPadding = size === "md" ? "p-1" : "px-1";
 
   function handleKeyDown(event: KeyboardEvent<HTMLFieldSetElement>) {
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -42,7 +43,7 @@ export function SegmentedControl({
   return (
     <fieldset onKeyDown={handleKeyDown} className={cx("min-w-0", className)}>
       <legend className="sr-only">{legend}</legend>
-      <div className="inline-flex max-w-full rounded-xl bg-sunken p-1">
+      <div className={cx("inline-flex max-w-full rounded-xl bg-sunken", containerPadding)}>
         {options.map((option, index) => {
           const selected = option.value === value;
           const inputId = `${groupId}-${index}`;
@@ -50,10 +51,8 @@ export function SegmentedControl({
             <label
               key={option.value}
               className={cx(
-                "relative flex cursor-pointer items-center justify-center rounded-lg font-medium transition-colors",
+                "relative flex min-h-11 cursor-pointer items-center justify-center px-0.5",
                 "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink",
-                itemSize,
-                selected ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
               )}
             >
               <input
@@ -65,7 +64,15 @@ export function SegmentedControl({
                 checked={selected}
                 onChange={() => onChange(option.value)}
               />
-              {option.label}
+              <span
+                className={cx(
+                  "flex items-center justify-center rounded-lg font-medium transition-colors",
+                  itemSize,
+                  selected ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+                )}
+              >
+                {option.label}
+              </span>
             </label>
           );
         })}

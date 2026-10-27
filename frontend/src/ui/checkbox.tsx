@@ -25,6 +25,9 @@ export function Checkbox({
   const inputId = id ?? generatedId;
   const hintId = `${inputId}-hint`;
   const labelId = `${inputId}-label`;
+  const describedBy = [props["aria-describedby"], hint ? hintId : undefined]
+    .filter((id): id is string => Boolean(id))
+    .join(" ");
 
   return (
     <label
@@ -43,7 +46,7 @@ export function Checkbox({
         onChange={onChange}
         disabled={disabled}
         aria-labelledby={labelId}
-        aria-describedby={hint ? hintId : props["aria-describedby"]}
+        aria-describedby={describedBy || undefined}
         className="size-[18px] shrink-0 accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       />
       <span className="flex min-w-0 flex-col">
