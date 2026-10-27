@@ -31,8 +31,8 @@ test("review: flip a cut, save as version 2, approve and land on the run", async
   await signUp(page);
   const videoId = await createSixtySecondVideo(page);
   await page.goto(`/videos/${videoId}`);
-  await page.getByLabel("Let me review first").check({ force: true });
-  await page.getByRole("button", { name: "Process with AI" }).click();
+  await page.getByLabel("Show me before it renders").check({ force: true });
+  await page.getByRole("button", { name: "Clean this video" }).click();
   await page.waitForURL(/\/runs\/[0-9a-f-]{36}$/);
   const runId = page.url().split("/").pop()!;
 

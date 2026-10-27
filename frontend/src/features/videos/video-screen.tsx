@@ -270,11 +270,11 @@ export function VideoScreen({ id, renderShare }: { id: string; renderShare?: Sha
               />
               <p className="m-0 text-[13px] leading-normal text-muted">{NARRATION[voice]}</p>
               {voice === "ai" ? (
-                voiceList.isPending || !voiceList.data ? (
+                voiceList.isPending ? (
                   <p role="status" className="m-0 text-[13px] text-muted">
                     Loading voice options…
                   </p>
-                ) : voiceList.isError ? (
+                ) : voiceList.isError || !voiceList.data ? (
                   <p role="alert" className="m-0 text-[13px] text-danger">
                     Voice options could not be loaded.
                   </p>

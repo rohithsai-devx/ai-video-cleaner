@@ -70,6 +70,7 @@ describe("VideoScreen start run", () => {
       original_url: null,
     });
     mock.voices.isPending = true;
+    mock.voices.isError = false;
     mock.voices.data = null;
     mock.runs = { isPending: false, isError: false, data: [] };
   });
@@ -151,6 +152,16 @@ describe("VideoScreen start run", () => {
     renderScreen();
     fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
 
+    expect(screen.getByRole("button", { name: "Clean this video" })).toBeDisabled();
+  });
+
+  it("shows a helpful error when provider voices cannot be loaded", () => {
+    mock.voices.isPending = false;
+    mock.voices.isError = true;
+    renderScreen();
+    fireEvent.click(screen.getByRole("radio", { name: "AI voice" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Voice options could not be loaded.");
     expect(screen.getByRole("button", { name: "Clean this video" })).toBeDisabled();
   });
 

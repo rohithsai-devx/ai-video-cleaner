@@ -11,7 +11,7 @@ test("an uploaded video starts a review-mode run", async ({ page }) => {
   await card.click();
   await page.waitForURL(`**/videos/${id}`);
 
-  await page.getByLabel("Let me review first").check({ force: true });
-  await page.getByRole("button", { name: "Process with AI" }).click();
+  await page.getByLabel("Show me before it renders").check({ force: true });
+  await page.getByRole("button", { name: "Clean this video" }).click();
   await page.waitForURL(/\/runs\/[0-9a-f-]{36}$/);
 });
